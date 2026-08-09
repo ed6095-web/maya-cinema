@@ -13,6 +13,7 @@ import 'package:maya_app/app/theme.dart';
 import 'package:maya_app/features/movies/data/models.dart';
 import 'package:maya_app/features/movies/data/movie_repository.dart';
 import 'package:maya_app/features/movies/domain/movie_providers.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
 // ============================================================================
@@ -623,8 +624,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              alignment: WrapAlignment.center,
               children: [
                 OutlinedButton.icon(
                   onPressed: () {
@@ -639,13 +642,25 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                   label: const Text('Go Back'),
                   style: OutlinedButton.styleFrom(foregroundColor: Colors.white),
                 ),
-                const SizedBox(width: 14),
                 ElevatedButton.icon(
                   onPressed: _initPlayer,
                   icon: const Icon(Icons.refresh, size: 18),
                   label: const Text('Retry'),
                   style: ElevatedButton.styleFrom(backgroundColor: _playerAccent, foregroundColor: Colors.black),
                 ),
+                if (_movie?.videoPath != null &&
+                    (_movie!.videoPath!.startsWith('http://') || _movie!.videoPath!.startsWith('https://')))
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      final uri = Uri.parse(_movie!.videoPath!);
+                      if (await canLaunchUrl(uri)) {
+                        await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+                      }
+                    },
+                    icon: const Icon(Icons.open_in_browser, size: 18),
+                    label: const Text('Play in Cloud Player'),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black),
+                  ),
               ],
             ),
           ],

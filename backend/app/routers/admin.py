@@ -78,3 +78,17 @@ async def toggle_user_active(
     await db.flush()
     await db.refresh(user)
     return user
+
+
+@router.post("/reset-database")
+async def reset_database(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Reset database tables and seed fresh default accounts and genres."""
+    from app.core.database import Base, engine, init_db
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await init_db()
+    return {"status": "success", "message": "Database and accounts reset successfully!"}
+
