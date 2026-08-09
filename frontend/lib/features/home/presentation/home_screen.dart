@@ -382,12 +382,12 @@ class _GenreBrowserSection extends ConsumerWidget {
 // Mobile Top Bar
 // ============================================================================
 
-class _MayaMobileTopBar extends StatelessWidget {
+class _MayaMobileTopBar extends ConsumerWidget {
   final bool isAdmin;
   const _MayaMobileTopBar({required this.isAdmin});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Container(
       color: MayaColors.surface,
       child: SafeArea(
@@ -401,21 +401,126 @@ class _MayaMobileTopBar extends StatelessWidget {
               const SizedBox(width: 8),
               Text('MAYA', style: MayaTextStyles.logoText.copyWith(fontSize: 14, letterSpacing: 3)),
               const Spacer(),
-              if (isAdmin)
-                IconButton(
-                  onPressed: () => context.push(MayaRoutes.admin),
-                  icon: const Icon(Icons.dashboard_outlined, color: MayaColors.accent, size: 20),
-                  tooltip: 'Admin Dashboard',
-                ),
               IconButton(
                 onPressed: () => context.push(MayaRoutes.search),
                 icon: const Icon(Icons.search, color: MayaColors.textSecondary, size: 20),
               ),
+              if (isAdmin)
+                IconButton(
+                  onPressed: () => context.push(MayaRoutes.admin),
+                  icon: const Icon(Icons.admin_panel_settings, color: MayaColors.accent, size: 22),
+                  tooltip: 'Admin Dashboard',
+                )
+              else
+                IconButton(
+                  onPressed: () => _showAdminLoginDialog(context, ref),
+                  icon: const Icon(Icons.admin_panel_settings_outlined, color: MayaColors.accent, size: 20),
+                  tooltip: 'Admin Login',
+                ),
             ],
           ),
         ),
       ),
     );
   }
+
+  void _showAdminLoginDialog(BuildContext context, WidgetRef ref) {
+    final userCtrl = TextEditingController(text: 'ed6095');
+    final passCtrl = TextEditingController(text: '@Bettiah1234');
+    bool isLoading = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF181818),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.admin_panel_settings, color: MayaColors.accent, size: 24),
+              SizedBox(width: 10),
+              Text('Owner Admin Portal', style: TextStyle(color: Colors.white, fontSize: 18)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Log in with your Owner Admin account to manage and upload movies:',
+                style: TextStyle(color: MayaColors.textSecondary, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: userCtrl,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Username or Email',
+                  prefixIcon: Icon(Icons.person, color: MayaColors.accent, size: 18),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: passCtrl,
+                obscureText: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Admin Password',
+                  prefixIcon: Icon(Icons.lock, color: MayaColors.accent, size: 18),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel', style: TextStyle(color: MayaColors.textMuted)),
+            ),
+            ElevatedButton(
+              onPressed: isLoading
+                  ? null
+                  : () async {
+                      setDialogState(() => isLoading = true);
+                      try {
+                        await ref.read(authProvider.notifier).login(
+                              userCtrl.text.trim(),
+                              passCtrl.text.trim(),
+                            );
+                        if (ctx.mounted) {
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Logged in as Admin (ed6095)!'),
+                              backgroundColor: MayaColors.accent,
+                            ),
+                          );
+                          context.push(MayaRoutes.admin);
+                        }
+                      } catch (e) {
+                        setDialogState(() => isLoading = false);
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Login failed: $e'),
+                              backgroundColor: MayaColors.error,
+                            ),
+                          );
+                        }
+                      }
+                    },
+              child: isLoading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                    )
+                  : const Text('Open Dashboard'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
+
 

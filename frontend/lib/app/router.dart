@@ -55,23 +55,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     navigatorKey: _rootNavigatorKey,
     initialLocation: MayaRoutes.home,
     debugLogDiagnostics: true,
-    redirect: (context, state) {
-      final isLoggedIn = authState is AuthAuthenticated;
-      final isInitial = authState is AuthInitial || authState is AuthLoading;
-      final isPublicRoute = state.matchedLocation == MayaRoutes.login ||
-          state.matchedLocation == MayaRoutes.register;
-
-      // Still initializing — don't redirect
-      if (isInitial) return null;
-
-      // Not logged in and not on a public route → send to login
-      if (!isLoggedIn && !isPublicRoute) return MayaRoutes.login;
-
-      // Logged in and on login/register → send home
-      if (isLoggedIn && isPublicRoute) return MayaRoutes.home;
-
-      return null;
-    },
+    redirect: (context, state) => null,
     routes: [
       // ── Public Auth Routes ───────────────────────────────────────────────
       GoRoute(

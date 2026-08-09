@@ -652,9 +652,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                     (_movie!.videoPath!.startsWith('http://') || _movie!.videoPath!.startsWith('https://')))
                   ElevatedButton.icon(
                     onPressed: () async {
-                      final uri = Uri.parse(_movie!.videoPath!);
-                      if (await canLaunchUrl(uri)) {
-                        await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+                      try {
+                        final uri = Uri.parse(_movie!.videoPath!);
+                        final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+                        if (!launched) {
+                          await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+                        }
+                      } catch (e) {
+                        try {
+                          await launchUrl(Uri.parse(_movie!.videoPath!), mode: LaunchMode.platformDefault);
+                        } catch (_) {}
                       }
                     },
                     icon: const Icon(Icons.open_in_browser, size: 18),

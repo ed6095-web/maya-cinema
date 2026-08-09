@@ -24,7 +24,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.dependencies.auth import get_current_user, require_admin
+from app.dependencies.auth import get_current_user, get_optional_user, require_admin
 from app.models.movie import Genre, Movie
 from app.models.user import User
 from app.schemas.movie import MovieListResponse, MovieResponse, MovieUpdate
@@ -54,7 +54,7 @@ async def _get_movie_or_404(movie_id: int, db: AsyncSession) -> Movie:
 
 
 # ---------------------------------------------------------------------------
-# List / Search
+# List / Search (Public for all guests)
 # ---------------------------------------------------------------------------
 
 @router.get("", response_model=MovieListResponse)
@@ -65,11 +65,11 @@ async def list_movies(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User | None = Depends(get_optional_user),
 ):
     """
     List movies with optional search, genre filter, and pagination.
-    Only returns active movies for regular users.
+    Open to all guests and users without requiring signup.
     """
     query = select(Movie).options(selectinload(Movie.genres)).where(Movie.is_active.is_(True))
 
@@ -112,14 +112,14 @@ async def list_movies(
 
 
 # ---------------------------------------------------------------------------
-# Get single movie
+# Get single movie (Public for all guests)
 # ---------------------------------------------------------------------------
 
 @router.get("/{movie_id}", response_model=MovieResponse)
 async def get_movie(
     movie_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User | None = Depends(get_optional_user),
 ):
     """Get detailed movie metadata by ID."""
     return await _get_movie_or_404(movie_id, db)

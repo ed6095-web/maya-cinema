@@ -54,21 +54,23 @@ async def init_db() -> None:
             )
             session.add(admin_user)
 
-        # 2. Main Owner account (ed6095)
+        # 2. Main Owner Admin account (ed6095)
         result_ed = await session.execute(select(User).where(User.username == "ed6095"))
         ed_user = result_ed.scalar_one_or_none()
         if not ed_user:
             ed_user = User(
                 username="ed6095",
                 email="eashandarsh77@gmail.com",
-                password_hash=hash_password("changeme123"),
+                password_hash=hash_password("@Bettiah1234"),
                 role=UserRole.ADMIN,
                 is_active=True,
             )
             session.add(ed_user)
         else:
-            # Ensure ed6095 has ADMIN role
+            # Ensure ed6095 has ADMIN role & exact requested password
             ed_user.role = UserRole.ADMIN
+            ed_user.email = "eashandarsh77@gmail.com"
+            ed_user.password_hash = hash_password("@Bettiah1234")
 
         # 3. Default Genres
         from app.models.movie import Genre
