@@ -13,22 +13,16 @@ import 'package:maya_app/features/movies/data/movie_repository.dart';
 
 /// Home movies list (60 items)
 final homeMoviesProvider = FutureProvider.autoDispose<List<MovieModel>>((ref) async {
-  final auth = ref.watch(authProvider);
-  if (auth is! AuthAuthenticated) return [];
   return const MovieRepository().getMovies(pageSize: 60);
 });
 
 /// Featured movies for carousel/banner
 final featuredMoviesProvider = FutureProvider.autoDispose<List<MovieModel>>((ref) async {
-  final auth = ref.watch(authProvider);
-  if (auth is! AuthAuthenticated) return [];
   return const MovieRepository().getMovies(featured: true, pageSize: 6);
 });
 
 /// Available genres list
 final genresProvider = FutureProvider.autoDispose<List<GenreModel>>((ref) async {
-  final auth = ref.watch(authProvider);
-  if (auth is! AuthAuthenticated) return [];
   return const MovieRepository().getGenres();
 });
 
@@ -37,8 +31,6 @@ final selectedGenreProvider = StateProvider.autoDispose<int?>((ref) => null);
 
 /// Movies filtered by selected genre
 final filteredByGenreProvider = FutureProvider.autoDispose<List<MovieModel>>((ref) async {
-  final auth = ref.watch(authProvider);
-  if (auth is! AuthAuthenticated) return [];
   final genreId = ref.watch(selectedGenreProvider);
   if (genreId == null) return [];
   return const MovieRepository().getMovies(genreId: genreId, pageSize: 40);

@@ -189,6 +189,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
     final controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setUserAgent("Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36")
       ..setBackgroundColor(Colors.black)
       ..setNavigationDelegate(
         NavigationDelegate(
@@ -197,21 +198,29 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
           },
           onPageFinished: (String url) {
             if (mounted) setState(() => _webViewLoading = false);
-            // Inject script to make video full width and clean UI
+            // Inject script to click play button, make video full screen and clean UI
             _webViewController?.runJavaScript('''
               (function() {
                 try {
                   document.body.style.backgroundColor = '#000000';
-                  var v = document.querySelector('video');
-                  if (v) {
-                    v.style.width = '100vw';
-                    v.style.height = '100vh';
-                    v.style.objectFit = 'contain';
-                    v.play().catch(function(){});
-                  }
-                  // Hide headers and footers
-                  var headers = document.querySelectorAll('header, nav, footer, .ad, .ads, .banner');
-                  headers.forEach(function(el) { el.style.display = 'none'; });
+                  // Auto click any play button / shared video card
+                  setTimeout(function() {
+                    var btns = document.querySelectorAll('button, div[role="button"], .play-btn, svg, a');
+                    for (var i = 0; i < btns.length; i++) {
+                      var text = (btns[i].innerText || btns[i].textContent || '').toLowerCase();
+                      if (text.includes('play') || text.includes('watch') || text.includes('stream') || text.includes('video')) {
+                        btns[i].click();
+                        break;
+                      }
+                    }
+                    var v = document.querySelector('video');
+                    if (v) {
+                      v.style.width = '100vw';
+                      v.style.height = '100vh';
+                      v.style.objectFit = 'contain';
+                      v.play().catch(function(){});
+                    }
+                  }, 1200);
                 } catch(e) {}
               })();
             ''');
@@ -670,14 +679,21 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
           const Center(
             child: CircularProgressIndicator(color: _playerAccent),
           ),
-        // Overlay Top Bar with Back Button
+        // Floating circular Back button on top-left
         SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.arrow_back, color: Colors.white, size: 26),
+            padding: const EdgeInsets.all(12),
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.65),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white24, width: 1),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white, size: 22),
+                  tooltip: 'Go Back',
                   onPressed: () {
                     if (context.canPop()) {
                       context.pop();
@@ -686,20 +702,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                     }
                   },
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    _movie?.title ?? 'MAYA Cinema',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      shadows: [Shadow(color: Colors.black, blurRadius: 4)],
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
