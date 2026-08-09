@@ -14,7 +14,7 @@ from app.core.database import init_db
 # Import all models so SQLAlchemy registers them before create_all
 from app.models import user, movie, favorite, watch_history  # noqa: F401
 
-from app.routers import auth, movies, favorites, watch, genres, admin
+from app.routers import auth, movies, favorites, watch, genres, admin, stream_resolver
 
 
 @asynccontextmanager
@@ -54,6 +54,7 @@ app.include_router(favorites.router)
 app.include_router(watch.router)
 app.include_router(genres.router)
 app.include_router(admin.router)
+app.include_router(stream_resolver.router)
 
 
 # ---------------------------------------------------------------------------

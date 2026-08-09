@@ -10,6 +10,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:maya_app/app/router.dart';
 import 'package:maya_app/app/theme.dart';
+import 'package:maya_app/core/constants/api_constants.dart';
+import 'package:maya_app/core/network/api_client.dart';
 import 'package:maya_app/features/movies/data/models.dart';
 import 'package:maya_app/features/movies/data/movie_repository.dart';
 import 'package:maya_app/features/movies/domain/movie_providers.dart';
@@ -84,28 +86,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     _initPlayer();
   }
 
-  bool _isWebStreamUrl(String url) {
-    final lower = url.toLowerCase().trim();
-    if (lower.contains('diskwala.com') ||
-        lower.contains('terabox.com') ||
-        lower.contains('youtube.com') ||
-        lower.contains('dailymotion.com')) {
-      return true;
-    }
-    // If it is an HTTP URL without standard direct video extensions, treat as web stream
-    if (lower.startsWith('http://') || lower.startsWith('https://')) {
-      final isDirectMedia = lower.endsWith('.mp4') ||
-          lower.endsWith('.mkv') ||
-          lower.endsWith('.m3u8') ||
-          lower.endsWith('.webm') ||
-          lower.endsWith('.mov') ||
-          lower.contains('.mp4?') ||
-          lower.contains('.m3u8?');
-      return !isDirectMedia;
-    }
-    return false;
-  }
-
   Future<void> _initPlayer() async {
     setState(() {
       _loading = true;
@@ -115,12 +95,25 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
     try {
       _movie = await const MovieRepository().getMovieById(widget.movieId);
-      final videoPath = _movie?.videoPath?.trim() ?? '';
+      final rawVideoPath = _movie?.videoPath?.trim() ?? '';
 
-      // ── MODE 1: In-App WebStream Engine (Diskwala & Web Video Links) ─────
-      if (_isWebStreamUrl(videoPath)) {
-        _setupWebView(videoPath);
-        return;
+      // ── RESOLVE DISKWALA LINK → DIRECT STREAM URL VIA BACKEND ─────────────
+      String videoPath = rawVideoPath;
+      if (rawVideoPath.toLowerCase().contains('diskwala.com')) {
+        setState(() => _loading = true);
+        try {
+          final resolved = await _resolveStreamUrl(rawVideoPath);
+          if (resolved != null && resolved.isNotEmpty) {
+            videoPath = resolved;
+          } else {
+            // If resolver fails, fallback to WebView
+            _setupWebView(rawVideoPath);
+            return;
+          }
+        } catch (_) {
+          _setupWebView(rawVideoPath);
+          return;
+        }
       }
 
       // ── MODE 2: Native Cinema Player (Direct MP4 / HLS Streams) ──────────
@@ -165,7 +158,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         _resetHideTimer();
       }
     } catch (e) {
-      // Fallback: If native playback throws source error and we have an http URL, try In-App WebView
+      // Fallback: If native playback throws and we have an http URL, try In-App WebView
       final videoPath = _movie?.videoPath?.trim() ?? '';
       if (videoPath.startsWith('http://') || videoPath.startsWith('https://')) {
         _setupWebView(videoPath);
@@ -178,6 +171,23 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         }
       }
     }
+  }
+
+  /// Call backend resolver to convert a cloud storage URL to a direct stream URL.
+  Future<String?> _resolveStreamUrl(String url) async {
+    try {
+      final response = await apiClient.post(
+        ApiConstants.resolveStream,
+        data: {'url': url},
+      );
+      if (response.statusCode == 200) {
+        final data = response.data;
+        return data['stream_url'] as String?;
+      }
+    } catch (e) {
+      debugPrint('Stream resolver error: $e');
+    }
+    return null;
   }
 
   void _setupWebView(String url) {
