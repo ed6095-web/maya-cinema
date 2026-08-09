@@ -59,12 +59,28 @@ class _MovieUploadEditScreenState extends ConsumerState<MovieUploadEditScreen> {
 
   bool get _isEditing => widget.existingMovie != null;
 
+  static const _defaultFallbackGenres = [
+    GenreModel(id: 1, name: 'Action', slug: 'action'),
+    GenreModel(id: 2, name: 'Sci-Fi', slug: 'sci-fi'),
+    GenreModel(id: 3, name: 'Thriller', slug: 'thriller'),
+    GenreModel(id: 4, name: 'Drama', slug: 'drama'),
+    GenreModel(id: 5, name: 'Comedy', slug: 'comedy'),
+    GenreModel(id: 6, name: 'Horror', slug: 'horror'),
+    GenreModel(id: 7, name: 'Romance', slug: 'romance'),
+    GenreModel(id: 8, name: 'Adventure', slug: 'adventure'),
+    GenreModel(id: 9, name: 'Animation', slug: 'animation'),
+    GenreModel(id: 10, name: 'Crime', slug: 'crime'),
+    GenreModel(id: 11, name: 'Mystery', slug: 'mystery'),
+    GenreModel(id: 12, name: 'Fantasy', slug: 'fantasy'),
+  ];
+
   @override
   void initState() {
     super.initState();
     _isFeatured = widget.existingMovie?.isFeatured ?? false;
     _isActive = widget.existingMovie?.isActive ?? true;
     _selectedGenreIds = widget.existingMovie?.genres.map((g) => g.id).toList() ?? [];
+    _allGenres = _defaultFallbackGenres;
     _loadGenres();
   }
 
@@ -84,7 +100,9 @@ class _MovieUploadEditScreenState extends ConsumerState<MovieUploadEditScreen> {
   Future<void> _loadGenres() async {
     try {
       final genres = await const MovieRepository().getGenres();
-      if (mounted) setState(() => _allGenres = genres);
+      if (genres.isNotEmpty && mounted) {
+        setState(() => _allGenres = genres);
+      }
     } catch (_) {}
   }
 

@@ -70,6 +70,27 @@ async def init_db() -> None:
             # Ensure ed6095 has ADMIN role
             ed_user.role = UserRole.ADMIN
 
+        # 3. Default Genres
+        from app.models.movie import Genre
+        default_genres = [
+            ("Action", "action"),
+            ("Sci-Fi", "sci-fi"),
+            ("Thriller", "thriller"),
+            ("Drama", "drama"),
+            ("Comedy", "comedy"),
+            ("Horror", "horror"),
+            ("Romance", "romance"),
+            ("Adventure", "adventure"),
+            ("Animation", "animation"),
+            ("Crime", "crime"),
+            ("Mystery", "mystery"),
+            ("Fantasy", "fantasy"),
+        ]
+        for name, slug in default_genres:
+            res_g = await session.execute(select(Genre).where(Genre.slug == slug))
+            if not res_g.scalar_one_or_none():
+                session.add(Genre(name=name, slug=slug))
+
         await session.commit()
 
 
