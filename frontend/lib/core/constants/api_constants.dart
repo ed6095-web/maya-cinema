@@ -7,17 +7,14 @@ class ApiConstants {
   ApiConstants._();
 
   // -------------------------------------------------------------------------
-  // Base URLs:
-  // Your computer's current Wi-Fi IP address is: 10.77.125.112
+  // Production 24/7 Cloud Backend URL:
   // -------------------------------------------------------------------------
+  static const String cloudUrl = 'https://maya-cinema.onrender.com';
   static const String hostIp = '10.77.125.112';
 
   static String get baseUrl {
-    if (kIsWeb) {
-      return 'http://localhost:8000';
-    }
-    // Physical mobile device / Android APK connects via host PC Wi-Fi IP
-    return 'http://$hostIp:8000';
+    // 24/7 Always-On Render Cloud Backend
+    return cloudUrl;
   }
 
   // -------------------------------------------------------------------------
