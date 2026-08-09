@@ -59,6 +59,9 @@ dependencies:
   # URL Launcher (Email / Links)
   url_launcher: ^6.3.0
 
+  # In-App Web Video Stream Engine
+  webview_flutter: ^4.7.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

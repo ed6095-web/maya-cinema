@@ -1,7 +1,7 @@
 // MAYA — Cinema Pro Video Player Screen
-// Custom streaming interface with robust streaming error recovery,
-// Multiple Video Qualities (Auto, 1080p, 720p, 480p, 360p), Double-tap seek,
-// Aspect Ratio switcher, Subtitle & Speed modals, and safe back navigation.
+// Hybrid Native & WebStream In-App Cinema Engine:
+// 1. Direct Video Streams (.mp4, .m3u8, .mkv) -> Native Cyan Cinema Player (Quality, Speed, Seek)
+// 2. Web / Diskwala Streams -> In-App Cinema WebView Player (Zero external apps, 100% inside MAYA)
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -13,8 +13,8 @@ import 'package:maya_app/app/theme.dart';
 import 'package:maya_app/features/movies/data/models.dart';
 import 'package:maya_app/features/movies/data/movie_repository.dart';
 import 'package:maya_app/features/movies/domain/movie_providers.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 // ============================================================================
 // Video Aspect Ratio Modes
@@ -43,7 +43,12 @@ class PlayerScreen extends ConsumerStatefulWidget {
 }
 
 class _PlayerScreenState extends ConsumerState<PlayerScreen> {
+  // Native video player state
   VideoPlayerController? _controller;
+  bool _isWebViewMode = false;
+  WebViewController? _webViewController;
+  bool _webViewLoading = true;
+
   bool _showControls = true;
   Timer? _hideControlsTimer;
   Timer? _progressTimer;
@@ -79,27 +84,53 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     _initPlayer();
   }
 
+  bool _isWebStreamUrl(String url) {
+    final lower = url.toLowerCase().trim();
+    if (lower.contains('diskwala.com') ||
+        lower.contains('terabox.com') ||
+        lower.contains('youtube.com') ||
+        lower.contains('dailymotion.com')) {
+      return true;
+    }
+    // If it is an HTTP URL without standard direct video extensions, treat as web stream
+    if (lower.startsWith('http://') || lower.startsWith('https://')) {
+      final isDirectMedia = lower.endsWith('.mp4') ||
+          lower.endsWith('.mkv') ||
+          lower.endsWith('.m3u8') ||
+          lower.endsWith('.webm') ||
+          lower.endsWith('.mov') ||
+          lower.contains('.mp4?') ||
+          lower.contains('.m3u8?');
+      return !isDirectMedia;
+    }
+    return false;
+  }
+
   Future<void> _initPlayer() async {
     setState(() {
       _loading = true;
       _error = null;
+      _isWebViewMode = false;
     });
 
     try {
       _movie = await const MovieRepository().getMovieById(widget.movieId);
-
-      // Determine the best streaming URL:
-      // If videoPath is a direct HTTP/HTTPS URL (e.g. Diskwala / Cloud stream), use it directly.
-      // Otherwise use the backend /api/movies/{id}/stream proxy route.
-      String targetUrl;
       final videoPath = _movie?.videoPath?.trim() ?? '';
+
+      // ── MODE 1: In-App WebStream Engine (Diskwala & Web Video Links) ─────
+      if (_isWebStreamUrl(videoPath)) {
+        _setupWebView(videoPath);
+        return;
+      }
+
+      // ── MODE 2: Native Cinema Player (Direct MP4 / HLS Streams) ──────────
+      String targetUrl;
       if (videoPath.startsWith('http://') || videoPath.startsWith('https://')) {
         targetUrl = videoPath;
       } else {
         targetUrl = const MovieRepository().streamUrl(widget.movieId);
       }
 
-      // Check existing progress to resume from
       final existingHistory = ref.read(historyProvider).value?.firstWhere(
             (h) => h.movieId == widget.movieId,
             orElse: () => WatchHistoryModel(
@@ -111,8 +142,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
             ),
           );
 
-      // Initialize ExoPlayer controller without extraneous custom auth headers
-      // (Direct video streams / Range chunks must not forward foreign Bearer tokens to CDNs)
       _controller?.dispose();
       _controller = VideoPlayerController.networkUrl(
         Uri.parse(targetUrl),
@@ -122,14 +151,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       await _controller!.initialize();
       _controller!.addListener(_onPlayerUpdate);
 
-      // Resume from saved position if past 30 seconds
       if (existingHistory != null && existingHistory.progressSeconds > 30) {
         await _controller!.seekTo(Duration(seconds: existingHistory.progressSeconds));
       }
 
       _controller!.play();
 
-      // Periodic progress saving
       _progressTimer?.cancel();
       _progressTimer = Timer.periodic(const Duration(seconds: 10), (_) => _saveProgress());
 
@@ -138,20 +165,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         _resetHideTimer();
       }
     } catch (e) {
-      // Fallback attempt with backend stream route if direct URL failed
-      try {
-        final fallbackUrl = const MovieRepository().streamUrl(widget.movieId);
-        _controller?.dispose();
-        _controller = VideoPlayerController.networkUrl(Uri.parse(fallbackUrl));
-        await _controller!.initialize();
-        _controller!.addListener(_onPlayerUpdate);
-        _controller!.play();
-
-        if (mounted) {
-          setState(() => _loading = false);
-          _resetHideTimer();
-        }
-      } catch (fallbackError) {
+      // Fallback: If native playback throws source error and we have an http URL, try In-App WebView
+      final videoPath = _movie?.videoPath?.trim() ?? '';
+      if (videoPath.startsWith('http://') || videoPath.startsWith('https://')) {
+        _setupWebView(videoPath);
+      } else {
         if (mounted) {
           setState(() {
             _loading = false;
@@ -162,6 +180,49 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     }
   }
 
+  void _setupWebView(String url) {
+    setState(() {
+      _isWebViewMode = true;
+      _webViewLoading = true;
+      _loading = false;
+    });
+
+    final controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(Colors.black)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageStarted: (String url) {
+            if (mounted) setState(() => _webViewLoading = true);
+          },
+          onPageFinished: (String url) {
+            if (mounted) setState(() => _webViewLoading = false);
+            // Inject script to make video full width and clean UI
+            _webViewController?.runJavaScript('''
+              (function() {
+                try {
+                  document.body.style.backgroundColor = '#000000';
+                  var v = document.querySelector('video');
+                  if (v) {
+                    v.style.width = '100vw';
+                    v.style.height = '100vh';
+                    v.style.objectFit = 'contain';
+                    v.play().catch(function(){});
+                  }
+                  // Hide headers and footers
+                  var headers = document.querySelectorAll('header, nav, footer, .ad, .ads, .banner');
+                  headers.forEach(function(el) { el.style.display = 'none'; });
+                } catch(e) {}
+              })();
+            ''');
+          },
+        ),
+      )
+      ..loadRequest(Uri.parse(url));
+
+    _webViewController = controller;
+  }
+
   void _onPlayerUpdate() {
     if (mounted) setState(() {});
     final c = _controller;
@@ -169,12 +230,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       final dur = c.value.duration;
       final pos = c.value.position;
       if (dur.inSeconds > 0 && dur.inSeconds - pos.inSeconds < 60) {
-        _saveProgress(forceComplete: true);
+        _saveProgress();
       }
     }
   }
 
-  Future<void> _saveProgress({bool forceComplete = false}) async {
+  Future<void> _saveProgress() async {
     final c = _controller;
     if (c == null || !c.value.isInitialized) return;
     final dur = c.value.duration.inSeconds;
@@ -590,10 +651,59 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         backgroundColor: Colors.black,
         body: _loading
             ? const Center(child: CircularProgressIndicator(color: _playerAccent))
-            : _error != null
-                ? _buildErrorView()
-                : _buildPlayerView(),
+            : _isWebViewMode
+                ? _buildWebViewPlayer()
+                : _error != null
+                    ? _buildErrorView()
+                    : _buildPlayerView(),
       ),
+    );
+  }
+
+  // ── IN-APP WEBSTREAM PLAYER VIEW ──────────────────────────────────────────
+  Widget _buildWebViewPlayer() {
+    return Stack(
+      children: [
+        if (_webViewController != null)
+          WebViewWidget(controller: _webViewController!),
+        if (_webViewLoading)
+          const Center(
+            child: CircularProgressIndicator(color: _playerAccent),
+          ),
+        // Overlay Top Bar with Back Button
+        SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white, size: 26),
+                  onPressed: () {
+                    if (context.canPop()) {
+                      context.pop();
+                    } else {
+                      context.go(MayaRoutes.home);
+                    }
+                  },
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _movie?.title ?? 'MAYA Cinema',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -624,10 +734,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              alignment: WrapAlignment.center,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 OutlinedButton.icon(
                   onPressed: () {
@@ -642,32 +750,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                   label: const Text('Go Back'),
                   style: OutlinedButton.styleFrom(foregroundColor: Colors.white),
                 ),
+                const SizedBox(width: 14),
                 ElevatedButton.icon(
                   onPressed: _initPlayer,
                   icon: const Icon(Icons.refresh, size: 18),
                   label: const Text('Retry'),
                   style: ElevatedButton.styleFrom(backgroundColor: _playerAccent, foregroundColor: Colors.black),
                 ),
-                if (_movie?.videoPath != null &&
-                    (_movie!.videoPath!.startsWith('http://') || _movie!.videoPath!.startsWith('https://')))
-                  ElevatedButton.icon(
-                    onPressed: () async {
-                      try {
-                        final uri = Uri.parse(_movie!.videoPath!);
-                        final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-                        if (!launched) {
-                          await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
-                        }
-                      } catch (e) {
-                        try {
-                          await launchUrl(Uri.parse(_movie!.videoPath!), mode: LaunchMode.platformDefault);
-                        } catch (_) {}
-                      }
-                    },
-                    icon: const Icon(Icons.open_in_browser, size: 18),
-                    label: const Text('Play in Cloud Player'),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black),
-                  ),
               ],
             ),
           ],

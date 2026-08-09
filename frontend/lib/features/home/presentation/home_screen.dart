@@ -425,8 +425,8 @@ class _MayaMobileTopBar extends ConsumerWidget {
   }
 
   void _showAdminLoginDialog(BuildContext context, WidgetRef ref) {
-    final userCtrl = TextEditingController(text: 'ed6095');
-    final passCtrl = TextEditingController(text: '@Bettiah1234');
+    final userCtrl = TextEditingController();
+    final passCtrl = TextEditingController();
     bool isLoading = false;
 
     showDialog(

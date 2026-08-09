@@ -1,22 +1,88 @@
 // MAYA — Profile Screen
-// Includes: Watching stats, Movie Request feature (eashandarsh77@gmail.com),
-// Permanent Admin Access portal with Admin PIN/Password unlock, and Account actions.
+// Complete experience for both Guests and Admin (ed6095):
+// - Editable Guest Name (stored in SharedPreferences)
+// - Watch Stats (Started, Completed, My List, Duration)
+// - Request a Movie feature (eashandarsh77@gmail.com)
+// - Admin Portal Verification Dialog (empty username & password fields for total privacy)
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:maya_app/app/router.dart';
 import 'package:maya_app/app/theme.dart';
-import 'package:maya_app/core/network/api_client.dart';
 import 'package:maya_app/features/auth/domain/auth_provider.dart';
 import 'package:maya_app/features/movies/domain/movie_providers.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-class ProfileScreen extends ConsumerWidget {
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  String _guestName = 'Guest Cinephile';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadGuestName();
+  }
+
+  Future<void> _loadGuestName() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString('guest_name');
+    if (saved != null && saved.isNotEmpty && mounted) {
+      setState(() => _guestName = saved);
+    }
+  }
+
+  Future<void> _saveGuestName(String newName) async {
+    if (newName.trim().isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('guest_name', newName.trim());
+    if (mounted) setState(() => _guestName = newName.trim());
+  }
+
+  void _openEditNameDialog() {
+    final ctrl = TextEditingController(text: _guestName);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF181818),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Edit Display Name', style: TextStyle(color: Colors.white, fontSize: 18)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            labelText: 'Your Name',
+            hintText: 'e.g. Alex, Rahul',
+            prefixIcon: Icon(Icons.person_outline, color: MayaColors.accent),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: MayaColors.textMuted)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _saveGuestName(ctrl.text);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
     final favCount = ref.watch(favoritesProvider).value?.length ?? 0;
     final historyEntries = ref.watch(historyProvider).value ?? [];
@@ -26,15 +92,30 @@ class ProfileScreen extends ConsumerWidget {
     final totalHours = totalSeconds ~/ 3600;
     final totalMinutes = (totalSeconds % 3600) ~/ 60;
 
-    if (user == null) return const Scaffold(backgroundColor: MayaColors.background);
-
-    final initials = user.username.isNotEmpty ? user.username[0].toUpperCase() : '?';
+    final displayName = user != null ? user.username : _guestName;
+    final displayEmail = user != null ? user.email : 'Guest Access · No login required';
+    final isAdmin = user?.isAdmin ?? false;
+    final initials = displayName.isNotEmpty ? displayName[0].toUpperCase() : 'G';
 
     return Scaffold(
       backgroundColor: MayaColors.background,
       appBar: AppBar(
         title: const Text('Profile'),
         backgroundColor: MayaColors.surface,
+        actions: [
+          if (isAdmin)
+            IconButton(
+              icon: const Icon(Icons.admin_panel_settings, color: MayaColors.accent),
+              tooltip: 'Admin Dashboard',
+              onPressed: () => context.push(MayaRoutes.admin),
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.admin_panel_settings_outlined, color: MayaColors.accent),
+              tooltip: 'Admin Portal',
+              onPressed: () => _openAdminLoginDialog(context),
+            ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(MayaSpacing.lg),
@@ -65,21 +146,37 @@ class ProfileScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: MayaSpacing.md),
-                Text(user.username, style: MayaTextStyles.titleLarge),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(displayName, style: MayaTextStyles.titleLarge),
+                    if (user == null) ...[
+                      const SizedBox(width: 6),
+                      InkWell(
+                        onTap: _openEditNameDialog,
+                        borderRadius: BorderRadius.circular(12),
+                        child: const Padding(
+                          padding: EdgeInsets.all(4),
+                          child: Icon(Icons.edit_outlined, color: MayaColors.accent, size: 16),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
                 const SizedBox(height: 4),
-                Text(user.email, style: MayaTextStyles.bodyMedium),
+                Text(displayEmail, style: MayaTextStyles.bodyMedium.copyWith(color: MayaColors.textSecondary)),
                 const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   decoration: BoxDecoration(
-                    color: user.isAdmin ? MayaColors.accentSubtle : MayaColors.surfaceSecondary,
+                    color: isAdmin ? MayaColors.accentSubtle : MayaColors.surfaceSecondary,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: user.isAdmin ? MayaColors.accentDim : MayaColors.border),
+                    border: Border.all(color: isAdmin ? MayaColors.accentDim : MayaColors.border),
                   ),
                   child: Text(
-                    user.isAdmin ? 'ADMINISTRATOR' : 'MEMBER',
+                    isAdmin ? 'ADMINISTRATOR' : (user != null ? 'MEMBER' : 'GUEST PASS'),
                     style: MayaTextStyles.accentLabel.copyWith(
-                      color: user.isAdmin ? MayaColors.accent : MayaColors.textMuted,
+                      color: isAdmin ? MayaColors.accent : MayaColors.textMuted,
                       fontSize: 10,
                     ),
                   ),
@@ -164,7 +261,7 @@ class ProfileScreen extends ConsumerWidget {
             label: 'Request a Movie',
             subtitle: 'Ask for movies to be added to MAYA',
             accent: true,
-            onTap: () => _openRequestMovieSheet(context, user.username),
+            onTap: () => _openRequestMovieSheet(context, displayName),
           ),
 
           _ActionTile(
@@ -188,11 +285,11 @@ class ProfileScreen extends ConsumerWidget {
           Text('Admin Portal', style: MayaTextStyles.titleSmall),
           const SizedBox(height: MayaSpacing.sm),
 
-          if (user.isAdmin) ...[
+          if (isAdmin) ...[
             _ActionTile(
               icon: Icons.dashboard_outlined,
               label: 'Admin Dashboard',
-              subtitle: 'Upload movies, manage genres & users',
+              subtitle: 'Upload movies, manage genres & library',
               onTap: () => context.push(MayaRoutes.admin),
               accent: true,
             ),
@@ -200,26 +297,28 @@ class ProfileScreen extends ConsumerWidget {
             _ActionTile(
               icon: Icons.admin_panel_settings_outlined,
               label: 'Unlock Admin Dashboard',
-              subtitle: 'Enter Admin Password to manage movies',
-              onTap: () => _openUnlockAdminDialog(context, ref),
+              subtitle: 'Log in with Owner Admin credentials to upload movies',
+              onTap: () => _openAdminLoginDialog(context),
               accent: true,
             ),
           ],
 
-          const SizedBox(height: MayaSpacing.md),
-          const Divider(color: MayaColors.border),
-          const SizedBox(height: MayaSpacing.sm),
+          if (user != null) ...[
+            const SizedBox(height: MayaSpacing.md),
+            const Divider(color: MayaColors.border),
+            const SizedBox(height: MayaSpacing.sm),
 
-          // ── Account ────────────────────────────────────────────────────
-          Text('Account', style: MayaTextStyles.titleSmall),
-          const SizedBox(height: MayaSpacing.sm),
-          _ActionTile(
-            icon: Icons.logout,
-            label: 'Sign Out',
-            subtitle: 'Signed in as ${user.username}',
-            onTap: () => ref.read(authProvider.notifier).logout(),
-            isDestructive: true,
-          ),
+            // ── Account ───────────────────────────────────────────────────
+            Text('Account', style: MayaTextStyles.titleSmall),
+            const SizedBox(height: MayaSpacing.sm),
+            _ActionTile(
+              icon: Icons.logout,
+              label: 'Sign Out Admin',
+              subtitle: 'Switch back to guest access',
+              onTap: () => ref.read(authProvider.notifier).logout(),
+              isDestructive: true,
+            ),
+          ],
 
           const SizedBox(height: MayaSpacing.xxl),
 
@@ -237,9 +336,9 @@ class ProfileScreen extends ConsumerWidget {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Request a Movie Dialog
+  // Request Movie Bottom Sheet
   // ──────────────────────────────────────────────────────────────────────────
-  void _openRequestMovieSheet(BuildContext context, String username) {
+  void _openRequestMovieSheet(BuildContext context, String requesterName) {
     final titleCtrl = TextEditingController();
     final yearCtrl = TextEditingController();
     final aboutCtrl = TextEditingController();
@@ -319,86 +418,72 @@ class ProfileScreen extends ConsumerWidget {
                     prefixIcon: Icon(Icons.description, size: 18, color: MayaColors.accent),
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
 
-                // Buttons
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.email_outlined, size: 18),
-                        label: const Text('Send Email'),
-                        onPressed: () async {
-                          final title = titleCtrl.text.trim();
-                          final year = yearCtrl.text.trim();
-                          final about = aboutCtrl.text.trim();
-                          if (title.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Please enter a movie title')),
+                // Submit Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: isSubmitting
+                        ? null
+                        : () async {
+                            final name = titleCtrl.text.trim();
+                            if (name.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Please enter a movie name'),
+                                  backgroundColor: MayaColors.error,
+                                ),
+                              );
+                              return;
+                            }
+
+                            setModalState(() => isSubmitting = true);
+
+                            final year = yearCtrl.text.trim();
+                            final about = aboutCtrl.text.trim();
+
+                            final subject = Uri.encodeComponent('Movie Request: $name (${year.isNotEmpty ? year : "N/A"})');
+                            final body = Uri.encodeComponent(
+                              'Hello MAYA Admin,\n\n'
+                              'I would like to request the following movie to be added to MAYA Cinema:\n\n'
+                              '🎬 Movie Name: $name\n'
+                              '📅 Release Year: ${year.isNotEmpty ? year : "Not specified"}\n'
+                              '📝 Notes / Details: ${about.isNotEmpty ? about : "None"}\n'
+                              '👤 Requested By: $requesterName\n\n'
+                              'Thank you!',
                             );
-                            return;
-                          }
-                          final subject = Uri.encodeComponent('[MAYA Movie Request] $title ($year)');
-                          final body = Uri.encodeComponent(
-                            'Movie Title: $title\nRelease Year: $year\nAbout/Notes: $about\nRequested by: $username',
-                          );
-                          final uri = Uri.parse('mailto:eashandarsh77@gmail.com?subject=$subject&body=$body');
-                          if (await canLaunchUrl(uri)) {
-                            await launchUrl(uri);
-                            if (ctx.mounted) Navigator.pop(ctx);
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        icon: isSubmitting
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
-                              )
-                            : const Icon(Icons.send, size: 18),
-                        label: Text(isSubmitting ? 'Sending...' : 'Submit'),
-                        onPressed: isSubmitting
-                            ? null
-                            : () async {
-                                final title = titleCtrl.text.trim();
-                                if (title.isEmpty) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Please enter a movie title')),
-                                  );
-                                  return;
-                                }
-                                setModalState(() => isSubmitting = true);
-                                try {
-                                  await apiClient.post('/api/movies/request', data: {
-                                    'title': title,
-                                    'year': yearCtrl.text.trim(),
-                                    'about': aboutCtrl.text.trim(),
-                                  });
-                                  if (ctx.mounted) {
-                                    Navigator.pop(ctx);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Request for "$title" sent to eashandarsh77@gmail.com!'),
-                                        backgroundColor: MayaColors.accent,
-                                      ),
-                                    );
-                                  }
-                                } catch (e) {
-                                  setModalState(() => isSubmitting = false);
-                                  if (ctx.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('Error submitting request: $e')),
-                                    );
-                                  }
-                                }
-                              },
-                      ),
-                    ),
-                  ],
+
+                            final mailtoUri = Uri.parse('mailto:eashandarsh77@gmail.com?subject=$subject&body=$body');
+
+                            try {
+                              if (await canLaunchUrl(mailtoUri)) {
+                                await launchUrl(mailtoUri);
+                              }
+                            } catch (_) {}
+
+                            if (ctx.mounted) {
+                              Navigator.pop(ctx);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Request prepared! Thank you for helping improve MAYA.'),
+                                  backgroundColor: MayaColors.accent,
+                                ),
+                              );
+                            }
+                          },
+                    child: isSubmitting
+                        ? const CircularProgressIndicator(color: Colors.black)
+                        : const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.send, size: 18),
+                              SizedBox(width: 8),
+                              Text('Send Request'),
+                            ],
+                          ),
+                  ),
                 ),
               ],
             ),
@@ -409,11 +494,12 @@ class ProfileScreen extends ConsumerWidget {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Unlock Admin Dialog
+  // Admin Login Dialog (Empty inputs for total privacy)
   // ──────────────────────────────────────────────────────────────────────────
-  void _openUnlockAdminDialog(BuildContext context, WidgetRef ref) {
-    final keyCtrl = TextEditingController();
-    bool isUnlocking = false;
+  void _openAdminLoginDialog(BuildContext context) {
+    final userCtrl = TextEditingController();
+    final passCtrl = TextEditingController();
+    bool isLoading = false;
 
     showDialog(
       context: context,
@@ -423,9 +509,9 @@ class ProfileScreen extends ConsumerWidget {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Row(
             children: [
-              Icon(Icons.lock_open, color: MayaColors.accent, size: 22),
+              Icon(Icons.admin_panel_settings, color: MayaColors.accent, size: 24),
               SizedBox(width: 10),
-              Text('Admin Verification', style: TextStyle(color: Colors.white, fontSize: 18)),
+              Text('Owner Admin Portal', style: TextStyle(color: Colors.white, fontSize: 18)),
             ],
           ),
           content: Column(
@@ -433,19 +519,26 @@ class ProfileScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Enter Admin Password to gain full admin permissions and open the dashboard:',
+                'Enter Owner Admin credentials to upload and manage movies:',
                 style: TextStyle(color: MayaColors.textSecondary, fontSize: 13),
               ),
               const SizedBox(height: 16),
               TextField(
-                controller: keyCtrl,
-                obscureText: true,
-                autofocus: true,
+                controller: userCtrl,
                 style: const TextStyle(color: Colors.white),
                 decoration: const InputDecoration(
-                  labelText: 'Admin Password',
-                  hintText: 'e.g. changeme123',
-                  prefixIcon: Icon(Icons.key, color: MayaColors.accent, size: 18),
+                  labelText: 'Username or Email',
+                  prefixIcon: Icon(Icons.person, color: MayaColors.accent, size: 18),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: passCtrl,
+                obscureText: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Password',
+                  prefixIcon: Icon(Icons.lock, color: MayaColors.accent, size: 18),
                 ),
               ),
             ],
@@ -456,46 +549,53 @@ class ProfileScreen extends ConsumerWidget {
               child: const Text('Cancel', style: TextStyle(color: MayaColors.textMuted)),
             ),
             ElevatedButton(
-              onPressed: isUnlocking
+              onPressed: isLoading
                   ? null
                   : () async {
-                      final key = keyCtrl.text.trim();
-                      if (key.isEmpty) return;
-                      setDialogState(() => isUnlocking = true);
+                      final u = userCtrl.text.trim();
+                      final p = passCtrl.text.trim();
+                      if (u.isEmpty || p.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Please enter your username and password'),
+                            backgroundColor: MayaColors.error,
+                          ),
+                        );
+                        return;
+                      }
 
+                      setDialogState(() => isLoading = true);
                       try {
-                        await apiClient.post('/api/auth/unlock-admin', data: {'admin_key': key});
-                        // Refresh auth profile
-                        await ref.read(authProvider.notifier).refreshProfile();
+                        await ref.read(authProvider.notifier).login(u, p);
                         if (ctx.mounted) {
                           Navigator.pop(ctx);
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text('Admin access unlocked successfully!'),
+                              content: Text('Admin access granted!'),
                               backgroundColor: MayaColors.accent,
                             ),
                           );
                           context.push(MayaRoutes.admin);
                         }
                       } catch (e) {
-                        setDialogState(() => isUnlocking = false);
+                        setDialogState(() => isLoading = false);
                         if (ctx.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Invalid Admin Password. Please try again.'),
+                            SnackBar(
+                              content: Text('Login failed: $e'),
                               backgroundColor: MayaColors.error,
                             ),
                           );
                         }
                       }
                     },
-              child: isUnlocking
+              child: isLoading
                   ? const SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
                     )
-                  : const Text('Unlock'),
+                  : const Text('Open Dashboard'),
             ),
           ],
         ),
@@ -569,35 +669,42 @@ class _ActionTile extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(MayaSpacing.cardRadius),
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 3),
-        padding: const EdgeInsets.symmetric(
-            horizontal: MayaSpacing.md, vertical: MayaSpacing.sm + 2),
-        decoration: BoxDecoration(
-          color: MayaColors.surfaceSecondary,
-          borderRadius: BorderRadius.circular(MayaSpacing.cardRadius),
-          border: Border.all(
-            color: isDestructive
-                ? MayaColors.error.withOpacity(0.25)
-                : accent
-                    ? MayaColors.accentDim
-                    : MayaColors.border,
-          ),
-        ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
         child: Row(
           children: [
-            Icon(icon, color: color, size: 20),
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: isDestructive
+                    ? MayaColors.error.withOpacity(0.12)
+                    : accent
+                        ? MayaColors.accentSubtle
+                        : MayaColors.surfaceSecondary,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isDestructive
+                      ? MayaColors.error.withOpacity(0.4)
+                      : accent
+                          ? MayaColors.accentDim
+                          : MayaColors.border,
+                ),
+              ),
+              child: Icon(icon, color: color, size: 18),
+            ),
             const SizedBox(width: MayaSpacing.md),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label,
-                      style: MayaTextStyles.bodyMedium.copyWith(
-                          color: isDestructive || accent
-                              ? color
-                              : MayaColors.textPrimary,
-                          fontWeight: FontWeight.w500)),
+                  Text(
+                    label,
+                    style: MayaTextStyles.bodyMedium.copyWith(
+                      color: isDestructive ? MayaColors.error : MayaColors.textPrimary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                   Text(subtitle, style: MayaTextStyles.bodySmall),
                 ],
               ),
