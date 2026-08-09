@@ -198,30 +198,38 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
           },
           onPageFinished: (String url) {
             if (mounted) setState(() => _webViewLoading = false);
-            // Inject script to click play button, make video full screen and clean UI
+            // Hide all Diskwala website elements, logos, cards and present ONLY full-screen video
             _webViewController?.runJavaScript('''
               (function() {
-                try {
-                  document.body.style.backgroundColor = '#000000';
-                  // Auto click any play button / shared video card
-                  setTimeout(function() {
-                    var btns = document.querySelectorAll('button, div[role="button"], .play-btn, svg, a');
-                    for (var i = 0; i < btns.length; i++) {
-                      var text = (btns[i].innerText || btns[i].textContent || '').toLowerCase();
-                      if (text.includes('play') || text.includes('watch') || text.includes('stream') || text.includes('video')) {
-                        btns[i].click();
-                        break;
-                      }
+                function cleanAndStream() {
+                  try {
+                    if (!document.getElementById('maya-cinema-style')) {
+                      var style = document.createElement('style');
+                      style.id = 'maya-cinema-style';
+                      style.innerHTML = `
+                        body, html { background-color: #000000 !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; }
+                        header, nav, footer, .navbar, .header, .logo, .ad, .ads, .banner, h1, h2, h3, p, span, div[class*="Header"], div[class*="Navbar"], div[class*="Logo"], div[class*="Card"], div[class*="card"] { display: none !important; }
+                        video { position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; object-fit: contain !important; background: #000000 !important; z-index: 9999999 !important; display: block !important; }
+                      `;
+                      document.head.appendChild(style);
                     }
+
+                    // Trigger click on play/video containers
+                    var clickables = document.querySelectorAll('button, div[role="button"], svg, video');
+                    for (var i = 0; i < clickables.length; i++) {
+                      try { clickables[i].click(); } catch(e){}
+                    }
+
                     var v = document.querySelector('video');
                     if (v) {
-                      v.style.width = '100vw';
-                      v.style.height = '100vh';
-                      v.style.objectFit = 'contain';
+                      v.style.display = 'block';
                       v.play().catch(function(){});
                     }
-                  }, 1200);
-                } catch(e) {}
+                  } catch(e) {}
+                }
+
+                cleanAndStream();
+                setInterval(cleanAndStream, 500);
               })();
             ''');
           },
