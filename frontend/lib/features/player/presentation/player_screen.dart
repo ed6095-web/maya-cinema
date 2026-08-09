@@ -199,7 +199,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
     final controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setUserAgent("Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36")
+      ..setUserAgent(
+          "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36")
       ..setBackgroundColor(Colors.black)
       ..setNavigationDelegate(
         NavigationDelegate(
@@ -208,40 +209,115 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
           },
           onPageFinished: (String url) {
             if (mounted) setState(() => _webViewLoading = false);
-            // Hide all Diskwala website elements, logos, cards and present ONLY full-screen video
-            _webViewController?.runJavaScript('''
-              (function() {
-                function cleanAndStream() {
-                  try {
-                    if (!document.getElementById('maya-cinema-style')) {
-                      var style = document.createElement('style');
-                      style.id = 'maya-cinema-style';
-                      style.innerHTML = `
-                        body, html { background-color: #000000 !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; }
-                        header, nav, footer, .navbar, .header, .logo, .ad, .ads, .banner, h1, h2, h3, p, span, div[class*="Header"], div[class*="Navbar"], div[class*="Logo"], div[class*="Card"], div[class*="card"] { display: none !important; }
-                        video { position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; object-fit: contain !important; background: #000000 !important; z-index: 9999999 !important; display: block !important; }
-                      `;
-                      document.head.appendChild(style);
-                    }
+            _webViewController?.runJavaScript(r'''
+(function() {
+  // Inject style ONLY once
+  if (!document.getElementById('maya-style')) {
+    var s = document.createElement('style');
+    s.id = 'maya-style';
+    s.textContent = `
+      /* Reset page background */
+      body, html {
+        background: #000 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+      }
 
-                    // Trigger click on play/video containers
-                    var clickables = document.querySelectorAll('button, div[role="button"], svg, video');
-                    for (var i = 0; i < clickables.length; i++) {
-                      try { clickables[i].click(); } catch(e){}
-                    }
+      /* Hide ONLY known Diskwala chrome elements by tag */
+      header, nav, footer, aside,
+      [class*="Header"], [class*="header"],
+      [class*="Navbar"], [class*="navbar"],
+      [class*="Footer"], [class*="footer"],
+      [class*="Topbar"], [class*="topbar"],
+      [class*="AppBar"], [class*="appbar"],
+      [class*="Logo"], [class*="logo"],
+      [class*="Banner"], [class*="banner"],
+      [class*="Download"], [class*="download"],
+      [class*="Sidebar"], [class*="sidebar"],
+      [class*="Modal"]:not([class*="Player"]):not([class*="player"]),
+      [class*="Dialog"]:not([class*="Player"]):not([class*="player"]),
+      [class*="Toast"], [class*="Snack"],
+      [class*="Cookie"], [class*="cookie"],
+      [class*="Ad"], [class*="ads"],
+      [data-testid*="header"], [data-testid*="nav"],
+      button[aria-label*="download"],
+      button[aria-label*="share"],
+      a[href*="download"] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
 
-                    var v = document.querySelector('video');
-                    if (v) {
-                      v.style.display = 'block';
-                      v.play().catch(function(){});
-                    }
-                  } catch(e) {}
-                }
+      /* Make video fullscreen */
+      video {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        object-fit: contain !important;
+        background: #000 !important;
+        z-index: 2147483647 !important;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+      }
 
-                cleanAndStream();
-                setInterval(cleanAndStream, 500);
-              })();
-            ''');
+      /* Bring video container to top */
+      [class*="Player"], [class*="player"],
+      [class*="Video"], [class*="video"] {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        z-index: 2147483646 !important;
+      }
+    `;
+    document.head.appendChild(s);
+  }
+
+  function tryPlay() {
+    // Find video element
+    var v = document.querySelector('video');
+    if (v) {
+      v.muted = false;
+      v.volume = 1;
+      v.play().catch(function() { v.muted = true; v.play().catch(function(){}); });
+      return true;
+    }
+
+    // No video yet — click play buttons to trigger stream load
+    var selectors = [
+      '[class*="play" i]',
+      '[aria-label*="play" i]',
+      '[aria-label*="Play" i]',
+      'button[class*="Play"]',
+      '[class*="PlayButton"]',
+      '[class*="playBtn"]',
+      '[data-testid*="play"]',
+      'svg[class*="play"]',
+    ];
+    for (var i = 0; i < selectors.length; i++) {
+      var el = document.querySelector(selectors[i]);
+      if (el) { try { el.click(); } catch(e) {} }
+    }
+    return false;
+  }
+
+  // Try immediately and keep retrying every 800ms
+  var attempts = 0;
+  var interval = setInterval(function() {
+    attempts++;
+    var success = tryPlay();
+    if (success || attempts > 30) clearInterval(interval);
+  }, 800);
+
+  tryPlay();
+})();
+''');
           },
         ),
       )
@@ -249,6 +325,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
     _webViewController = controller;
   }
+
 
   void _onPlayerUpdate() {
     if (mounted) setState(() {});
