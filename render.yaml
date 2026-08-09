@@ -15,7 +15,3 @@ services:
         value: sqlite+aiosqlite:///./maya.db
       - key: CORS_ORIGINS
         value: "*"
-    disk:
-      name: maya-media
-      mountPath: /app/backend/media
-      sizeGB: 1
