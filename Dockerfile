@@ -20,7 +20,7 @@ COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Install Playwright Chromium browser + system dependencies for headless video resolution
-RUN playwright install chromium --with-deps
+RUN python -m playwright install chromium --with-deps
 
 # Copy backend application code
 COPY backend /app/backend
