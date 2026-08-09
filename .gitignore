@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+backend/venv/
+venv/
+ENV/
+env/
+.env
+.pytest_cache/
+
+# Flutter / Dart
+frontend/.dart_tool/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/.packages
+frontend/.pub-cache/
+frontend/.pub/
+frontend/build/app/
+frontend/android/.gradle
+frontend/android/local.properties
+frontend/android/app/build/
+
+# Tools & Local Binaries
+tools/cloudflared.exe
+
+# Database & Media
+backend/maya.db
+backend/media/
+backend/posters/
+backend/thumbnails/
+
+# OS Files
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  maya-cinema:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: maya_cinema_server
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - maya_media:/app/backend/media
+      - maya_posters:/app/backend/posters
+      - maya_db:/app/backend
+    environment:
+      - APP_NAME=MAYA
+      - HOST=0.0.0.0
+      - PORT=8000
+      - MEDIA_DIRECTORY=media
+      - POSTER_DIRECTORY=posters
+      - CORS_ORIGINS=["*"]
+
+volumes:
+  maya_media:
+  maya_posters:
+  maya_db:
