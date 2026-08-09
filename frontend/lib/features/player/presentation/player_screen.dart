@@ -10,8 +10,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:maya_app/app/router.dart';
 import 'package:maya_app/app/theme.dart';
-import 'package:maya_app/core/constants/api_constants.dart';
-import 'package:maya_app/core/network/api_client.dart';
 import 'package:maya_app/features/movies/data/models.dart';
 import 'package:maya_app/features/movies/data/movie_repository.dart';
 import 'package:maya_app/features/movies/domain/movie_providers.dart';
@@ -97,32 +95,19 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       _movie = await const MovieRepository().getMovieById(widget.movieId);
       final rawVideoPath = _movie?.videoPath?.trim() ?? '';
 
-      // ── RESOLVE DISKWALA LINK → DIRECT STREAM URL VIA BACKEND ─────────────
-      String videoPath = rawVideoPath;
-      if (rawVideoPath.toLowerCase().contains('diskwala.com')) {
-        setState(() => _loading = true);
-        try {
-          final resolved = await _resolveStreamUrl(rawVideoPath);
-          if (resolved != null && resolved.isNotEmpty) {
-            videoPath = resolved;
-          } else {
-            // If resolver fails, fallback to WebView
-            _setupWebView(rawVideoPath);
-            return;
-          }
-        } catch (_) {
-          _setupWebView(rawVideoPath);
-          return;
-        }
+      // ── STEP 1: Resolve / normalise video URL ─────────────────────────────
+      final resolvedUrl = _resolveVideoUrl(rawVideoPath);
+
+      // ── STEP 2: If it's a web-embed type, use WebView ─────────────────────
+      if (resolvedUrl.isWebEmbed) {
+        _setupWebView(resolvedUrl.url);
+        return;
       }
 
-      // ── MODE 2: Native Cinema Player (Direct MP4 / HLS Streams) ──────────
-      String targetUrl;
-      if (videoPath.startsWith('http://') || videoPath.startsWith('https://')) {
-        targetUrl = videoPath;
-      } else {
-        targetUrl = const MovieRepository().streamUrl(widget.movieId);
-      }
+      // ── STEP 3: Native Cinema Player (Direct MP4 / HLS / Drive) ──────────
+      final targetUrl = resolvedUrl.url.isNotEmpty
+          ? resolvedUrl.url
+          : const MovieRepository().streamUrl(widget.movieId);
 
       final existingHistory = ref.read(historyProvider).value?.firstWhere(
             (h) => h.movieId == widget.movieId,
@@ -158,35 +143,81 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         _resetHideTimer();
       }
     } catch (e) {
-      // Fallback: If native playback throws and we have an http URL, try In-App WebView
-      final videoPath = _movie?.videoPath?.trim() ?? '';
-      if (videoPath.startsWith('http://') || videoPath.startsWith('https://')) {
-        _setupWebView(videoPath);
-      } else {
-        if (mounted) {
-          setState(() {
-            _loading = false;
-            _error = 'Could not load video stream. Please verify the video link or format.';
-          });
-        }
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Could not load video.\n\nTip: Use a Google Drive or direct MP4 link for best results.\n\nError: $e';
+        });
       }
     }
   }
 
-  /// Call backend resolver to convert a cloud storage URL to a direct stream URL.
-  Future<String?> _resolveStreamUrl(String url) async {
-    try {
-      final response = await apiClient.post(
-        ApiConstants.resolveStream,
-        data: {'url': url},
-      );
-      if (response.statusCode == 200) {
-        final data = response.data;
-        return data['stream_url'] as String?;
+  /// Resolves any supported video URL into a playable form.
+  ///
+  /// Supported formats:
+  ///  • Direct MP4/MKV/M3U8 URLs           → played natively as-is
+  ///  • Google Drive share links            → converted to direct stream URL
+  ///  • Google Drive /preview links         → kept as WebView embed
+  ///  • Relative paths                      → served from MAYA backend
+  _ResolvedUrl _resolveVideoUrl(String raw) {
+    final url = raw.trim();
+
+    // ── Google Drive ──────────────────────────────────────────────────────
+    // Handles:
+    //   https://drive.google.com/file/d/FILE_ID/view
+    //   https://drive.google.com/file/d/FILE_ID/view?usp=sharing
+    //   https://drive.google.com/open?id=FILE_ID
+    //   https://drive.google.com/uc?id=FILE_ID
+    if (url.contains('drive.google.com')) {
+      final fileId = _extractGoogleDriveId(url);
+      if (fileId != null) {
+        // Direct download stream URL — works with Flutter video_player
+        final streamUrl =
+            'https://drive.usercontent.google.com/download?id=$fileId&export=download&authuser=0&confirm=t';
+        return _ResolvedUrl(url: streamUrl, isWebEmbed: false);
       }
-    } catch (e) {
-      debugPrint('Stream resolver error: $e');
     }
+
+    // ── Direct media URL ──────────────────────────────────────────────────
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      final lower = url.toLowerCase();
+      final isDirect = lower.endsWith('.mp4') ||
+          lower.endsWith('.mkv') ||
+          lower.endsWith('.m3u8') ||
+          lower.endsWith('.webm') ||
+          lower.endsWith('.mov') ||
+          lower.contains('.mp4?') ||
+          lower.contains('.m3u8?') ||
+          lower.contains('googleusercontent.com') || // GCS / Drive download
+          lower.contains('amazonaws.com') || // S3
+          lower.contains('cloudinary.com') || // Cloudinary
+          lower.contains('bunnycdn.com') || // Bunny CDN
+          lower.contains('b-cdn.net'); // Bunny CDN alias
+      if (isDirect) return _ResolvedUrl(url: url, isWebEmbed: false);
+
+      // Any other HTTP URL → try as WebView (last resort)
+      return _ResolvedUrl(url: url, isWebEmbed: true);
+    }
+
+    // ── Relative path → served from MAYA backend ─────────────────────────
+    return _ResolvedUrl(
+      url: const MovieRepository().streamUrl(widget.movieId),
+      isWebEmbed: false,
+    );
+  }
+
+  /// Extracts the Google Drive file ID from any Drive share URL.
+  String? _extractGoogleDriveId(String url) {
+    // Pattern: /file/d/FILE_ID/
+    final filePattern = RegExp(r'/file/d/([a-zA-Z0-9_-]{20,})');
+    final fileMatch = filePattern.firstMatch(url);
+    if (fileMatch != null) return fileMatch.group(1);
+
+    // Pattern: ?id=FILE_ID or &id=FILE_ID
+    final idPattern = RegExp(r'[?&]id=([a-zA-Z0-9_-]{20,})');
+    final idMatch = idPattern.firstMatch(url);
+    if (idMatch != null) return idMatch.group(1);
+
     return null;
   }
 
@@ -1227,4 +1258,14 @@ class _PlayerIconButton extends StatelessWidget {
       ),
     );
   }
+}
+
+// ============================================================================
+// Helper: Resolved Video URL
+// ============================================================================
+
+class _ResolvedUrl {
+  final String url;
+  final bool isWebEmbed;
+  const _ResolvedUrl({required this.url, required this.isWebEmbed});
 }
