@@ -72,6 +72,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  Future<void> refreshProfile() async {
+    try {
+      final user = await _repo.getMe();
+      state = AuthAuthenticated(user);
+    } catch (_) {}
+  }
+
   Future<void> logout() async {
     await _repo.logout();
     state = const AuthUnauthenticated();

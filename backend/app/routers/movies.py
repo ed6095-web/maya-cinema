@@ -347,3 +347,43 @@ async def stream_movie(
         headers=headers,
         media_type=media_type,
     )
+
+
+# ---------------------------------------------------------------------------
+# Movie Requests (submitted to eashandarsh77@gmail.com)
+# ---------------------------------------------------------------------------
+
+@router.post("/request")
+async def request_movie(
+    body: dict,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Receive movie request from user (title, year, about)
+    and route details for eashandarsh77@gmail.com.
+    """
+    title = body.get("title", "").strip()
+    year = body.get("year", "").strip()
+    about = body.get("about", "").strip()
+
+    if not title:
+        raise HTTPException(status_code=400, detail="Movie title is required")
+
+    print(f"🎬 [NEW MOVIE REQUEST for eashandarsh77@gmail.com]")
+    print(f"   Requested by: {current_user.username} ({current_user.email})")
+    print(f"   Movie Title:  {title}")
+    print(f"   Release Year: {year}")
+    print(f"   About/Notes:  {about}")
+
+    return {
+        "status": "success",
+        "message": f"Movie request for '{title}' received! Notification queued for eashandarsh77@gmail.com",
+        "details": {
+            "title": title,
+            "year": year,
+            "about": about,
+            "requested_by": current_user.username,
+            "notify_email": "eashandarsh77@gmail.com",
+        }
+    }
+

@@ -1,11 +1,16 @@
-// MAYA — Profile Screen (Phase 5 — full stats + actions)
+// MAYA — Profile Screen
+// Includes: Watching stats, Movie Request feature (eashandarsh77@gmail.com),
+// Permanent Admin Access portal with Admin PIN/Password unlock, and Account actions.
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:maya_app/app/router.dart';
 import 'package:maya_app/app/theme.dart';
+import 'package:maya_app/core/network/api_client.dart';
 import 'package:maya_app/features/auth/domain/auth_provider.dart';
 import 'package:maya_app/features/movies/domain/movie_providers.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -17,8 +22,7 @@ class ProfileScreen extends ConsumerWidget {
     final historyEntries = ref.watch(historyProvider).value ?? [];
     final watchedCount = historyEntries.length;
     final completedCount = historyEntries.where((h) => h.completed).length;
-    final totalSeconds = historyEntries.fold<int>(
-      0, (sum, h) => sum + h.progressSeconds);
+    final totalSeconds = historyEntries.fold<int>(0, (sum, h) => sum + h.progressSeconds);
     final totalHours = totalSeconds ~/ 3600;
     final totalMinutes = (totalSeconds % 3600) ~/ 60;
 
@@ -35,7 +39,6 @@ class ProfileScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(MayaSpacing.lg),
         children: [
-
           // ── Avatar + Identity ──────────────────────────────────────────
           Center(
             child: Column(
@@ -43,8 +46,8 @@ class ProfileScreen extends ConsumerWidget {
                 Hero(
                   tag: 'profile-avatar',
                   child: Container(
-                    width: 90,
-                    height: 90,
+                    width: 86,
+                    height: 86,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: MayaColors.accentSubtle,
@@ -55,7 +58,7 @@ class ProfileScreen extends ConsumerWidget {
                         initials,
                         style: MayaTextStyles.displayLarge.copyWith(
                           color: MayaColors.accent,
-                          fontSize: 36,
+                          fontSize: 34,
                         ),
                       ),
                     ),
@@ -65,18 +68,22 @@ class ProfileScreen extends ConsumerWidget {
                 Text(user.username, style: MayaTextStyles.titleLarge),
                 const SizedBox(height: 4),
                 Text(user.email, style: MayaTextStyles.bodyMedium),
-                if (user.isAdmin) ...[
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: MayaColors.accentSubtle,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: MayaColors.accentDim),
-                    ),
-                    child: Text('ADMINISTRATOR', style: MayaTextStyles.accentLabel),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: user.isAdmin ? MayaColors.accentSubtle : MayaColors.surfaceSecondary,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: user.isAdmin ? MayaColors.accentDim : MayaColors.border),
                   ),
-                ],
+                  child: Text(
+                    user.isAdmin ? 'ADMINISTRATOR' : 'MEMBER',
+                    style: MayaTextStyles.accentLabel.copyWith(
+                      color: user.isAdmin ? MayaColors.accent : MayaColors.textMuted,
+                      fontSize: 10,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -88,23 +95,29 @@ class ProfileScreen extends ConsumerWidget {
           const SizedBox(height: MayaSpacing.md),
           Row(
             children: [
-              Expanded(child: _StatTile(
-                icon: Icons.movie_outlined,
-                value: '$watchedCount',
-                label: 'Movies Started',
-              )),
+              Expanded(
+                child: _StatTile(
+                  icon: Icons.movie_outlined,
+                  value: '$watchedCount',
+                  label: 'Started',
+                ),
+              ),
               const SizedBox(width: MayaSpacing.sm),
-              Expanded(child: _StatTile(
-                icon: Icons.check_circle_outline,
-                value: '$completedCount',
-                label: 'Completed',
-              )),
+              Expanded(
+                child: _StatTile(
+                  icon: Icons.check_circle_outline,
+                  value: '$completedCount',
+                  label: 'Completed',
+                ),
+              ),
               const SizedBox(width: MayaSpacing.sm),
-              Expanded(child: _StatTile(
-                icon: Icons.bookmark_outline,
-                value: '$favCount',
-                label: 'In My List',
-              )),
+              Expanded(
+                child: _StatTile(
+                  icon: Icons.bookmark_outline,
+                  value: '$favCount',
+                  label: 'My List',
+                ),
+              ),
             ],
           ),
           const SizedBox(height: MayaSpacing.sm),
@@ -142,9 +155,18 @@ class ProfileScreen extends ConsumerWidget {
           const Divider(color: MayaColors.border),
           const SizedBox(height: MayaSpacing.sm),
 
-          // ── Quick actions ──────────────────────────────────────────────
-          Text('Library', style: MayaTextStyles.titleSmall),
+          // ── Features & Requests ─────────────────────────────────────────
+          Text('Features & Requests', style: MayaTextStyles.titleSmall),
           const SizedBox(height: MayaSpacing.sm),
+
+          _ActionTile(
+            icon: Icons.add_to_photos_outlined,
+            label: 'Request a Movie',
+            subtitle: 'Ask for movies to be added to MAYA',
+            accent: true,
+            onTap: () => _openRequestMovieSheet(context, user.username),
+          ),
+
           _ActionTile(
             icon: Icons.bookmark_outline,
             label: 'My List',
@@ -157,22 +179,34 @@ class ProfileScreen extends ConsumerWidget {
             subtitle: '$watchedCount movie${watchedCount == 1 ? '' : 's'} watched',
             onTap: () => context.go(MayaRoutes.history),
           ),
+
+          const SizedBox(height: MayaSpacing.md),
+          const Divider(color: MayaColors.border),
+          const SizedBox(height: MayaSpacing.sm),
+
+          // ── Admin Management ────────────────────────────────────────────
+          Text('Admin Portal', style: MayaTextStyles.titleSmall),
+          const SizedBox(height: MayaSpacing.sm),
+
           if (user.isAdmin) ...[
-            const SizedBox(height: MayaSpacing.sm),
-            const Divider(color: MayaColors.border),
-            const SizedBox(height: MayaSpacing.sm),
-            Text('Admin', style: MayaTextStyles.titleSmall),
-            const SizedBox(height: MayaSpacing.sm),
             _ActionTile(
               icon: Icons.dashboard_outlined,
               label: 'Admin Dashboard',
-              subtitle: 'Manage movies, users and genres',
-              onTap: () => context.go(MayaRoutes.admin),
+              subtitle: 'Upload movies, manage genres & users',
+              onTap: () => context.push(MayaRoutes.admin),
+              accent: true,
+            ),
+          ] else ...[
+            _ActionTile(
+              icon: Icons.admin_panel_settings_outlined,
+              label: 'Unlock Admin Dashboard',
+              subtitle: 'Enter Admin Password to manage movies',
+              onTap: () => _openUnlockAdminDialog(context, ref),
               accent: true,
             ),
           ],
 
-          const SizedBox(height: MayaSpacing.sm),
+          const SizedBox(height: MayaSpacing.md),
           const Divider(color: MayaColors.border),
           const SizedBox(height: MayaSpacing.sm),
 
@@ -186,17 +220,285 @@ class ProfileScreen extends ConsumerWidget {
             onTap: () => ref.read(authProvider.notifier).logout(),
             isDestructive: true,
           ),
+
           const SizedBox(height: MayaSpacing.xxl),
 
           // Footer
           Center(
             child: Text(
-              'MAYA · Private Media Platform · v1.0',
+              'MAYA · Personal Cinema · v1.0',
               style: MayaTextStyles.labelSmall,
             ),
           ),
           const SizedBox(height: MayaSpacing.lg),
         ],
+      ),
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Request a Movie Dialog
+  // ──────────────────────────────────────────────────────────────────────────
+  void _openRequestMovieSheet(BuildContext context, String username) {
+    final titleCtrl = TextEditingController();
+    final yearCtrl = TextEditingController();
+    final aboutCtrl = TextEditingController();
+    bool isSubmitting = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF141414),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            24,
+            24,
+            24,
+            MediaQuery.of(ctx).viewInsets.bottom + 24,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.movie_creation_outlined, color: MayaColors.accent, size: 24),
+                    const SizedBox(width: 10),
+                    Text('Request a Movie', style: MayaTextStyles.titleMedium),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: MayaColors.textMuted, size: 20),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                Text(
+                  'Your request will be sent to eashandarsh77@gmail.com',
+                  style: MayaTextStyles.bodySmall.copyWith(color: MayaColors.accentDim),
+                ),
+                const Divider(color: MayaColors.border, height: 24),
+
+                // Movie Name
+                TextField(
+                  controller: titleCtrl,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'Movie Name *',
+                    hintText: 'e.g. Interstellar, Inception',
+                    prefixIcon: Icon(Icons.movie, size: 18, color: MayaColors.accent),
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // Year
+                TextField(
+                  controller: yearCtrl,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'Release Year (Optional)',
+                    hintText: 'e.g. 2024',
+                    prefixIcon: Icon(Icons.calendar_today, size: 18, color: MayaColors.accent),
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // About / Notes
+                TextField(
+                  controller: aboutCtrl,
+                  maxLines: 3,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'About / Notes / Links',
+                    hintText: 'e.g. Hindi dubbed, 4K quality, IMDb link...',
+                    prefixIcon: Icon(Icons.description, size: 18, color: MayaColors.accent),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.email_outlined, size: 18),
+                        label: const Text('Send Email'),
+                        onPressed: () async {
+                          final title = titleCtrl.text.trim();
+                          final year = yearCtrl.text.trim();
+                          final about = aboutCtrl.text.trim();
+                          if (title.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Please enter a movie title')),
+                            );
+                            return;
+                          }
+                          final subject = Uri.encodeComponent('[MAYA Movie Request] $title ($year)');
+                          final body = Uri.encodeComponent(
+                            'Movie Title: $title\nRelease Year: $year\nAbout/Notes: $about\nRequested by: $username',
+                          );
+                          final uri = Uri.parse('mailto:eashandarsh77@gmail.com?subject=$subject&body=$body');
+                          if (await canLaunchUrl(uri)) {
+                            await launchUrl(uri);
+                            if (ctx.mounted) Navigator.pop(ctx);
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        icon: isSubmitting
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                              )
+                            : const Icon(Icons.send, size: 18),
+                        label: Text(isSubmitting ? 'Sending...' : 'Submit'),
+                        onPressed: isSubmitting
+                            ? null
+                            : () async {
+                                final title = titleCtrl.text.trim();
+                                if (title.isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Please enter a movie title')),
+                                  );
+                                  return;
+                                }
+                                setModalState(() => isSubmitting = true);
+                                try {
+                                  await apiClient.post('/api/movies/request', data: {
+                                    'title': title,
+                                    'year': yearCtrl.text.trim(),
+                                    'about': aboutCtrl.text.trim(),
+                                  });
+                                  if (ctx.mounted) {
+                                    Navigator.pop(ctx);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Request for "$title" sent to eashandarsh77@gmail.com!'),
+                                        backgroundColor: MayaColors.accent,
+                                      ),
+                                    );
+                                  }
+                                } catch (e) {
+                                  setModalState(() => isSubmitting = false);
+                                  if (ctx.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Error submitting request: $e')),
+                                    );
+                                  }
+                                }
+                              },
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Unlock Admin Dialog
+  // ──────────────────────────────────────────────────────────────────────────
+  void _openUnlockAdminDialog(BuildContext context, WidgetRef ref) {
+    final keyCtrl = TextEditingController();
+    bool isUnlocking = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF181818),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.lock_open, color: MayaColors.accent, size: 22),
+              SizedBox(width: 10),
+              Text('Admin Verification', style: TextStyle(color: Colors.white, fontSize: 18)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Enter Admin Password to gain full admin permissions and open the dashboard:',
+                style: TextStyle(color: MayaColors.textSecondary, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: keyCtrl,
+                obscureText: true,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Admin Password',
+                  hintText: 'e.g. changeme123',
+                  prefixIcon: Icon(Icons.key, color: MayaColors.accent, size: 18),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel', style: TextStyle(color: MayaColors.textMuted)),
+            ),
+            ElevatedButton(
+              onPressed: isUnlocking
+                  ? null
+                  : () async {
+                      final key = keyCtrl.text.trim();
+                      if (key.isEmpty) return;
+                      setDialogState(() => isUnlocking = true);
+
+                      try {
+                        await apiClient.post('/api/auth/unlock-admin', data: {'admin_key': key});
+                        // Refresh auth profile
+                        await ref.read(authProvider.notifier).refreshProfile();
+                        if (ctx.mounted) {
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Admin access unlocked successfully!'),
+                              backgroundColor: MayaColors.accent,
+                            ),
+                          );
+                          context.push(MayaRoutes.admin);
+                        }
+                      } catch (e) {
+                        setDialogState(() => isUnlocking = false);
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Invalid Admin Password. Please try again.'),
+                              backgroundColor: MayaColors.error,
+                            ),
+                          );
+                        }
+                      }
+                    },
+              child: isUnlocking
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                    )
+                  : const Text('Unlock'),
+            ),
+          ],
+        ),
       ),
     );
   }

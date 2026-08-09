@@ -389,25 +389,31 @@ class _MayaMobileTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 56,
       color: MayaColors.surface,
-      padding: const EdgeInsets.symmetric(horizontal: MayaSpacing.md),
-      child: Row(
-        children: [
-          Image.asset('assets/images/maya_logo.jpg', width: 28, height: 28),
-          const SizedBox(width: 8),
-          Text('MAYA', style: MayaTextStyles.logoText.copyWith(fontSize: 14, letterSpacing: 3)),
-          const Spacer(),
-          if (isAdmin)
-            IconButton(
-              onPressed: () => context.push(MayaRoutes.admin),
-              icon: const Icon(Icons.dashboard_outlined, color: MayaColors.accent, size: 20),
-            ),
-          IconButton(
-            onPressed: () => context.push(MayaRoutes.search),
-            icon: const Icon(Icons.search, color: MayaColors.textSecondary, size: 20),
+      child: SafeArea(
+        bottom: false,
+        child: Container(
+          height: 56,
+          padding: const EdgeInsets.symmetric(horizontal: MayaSpacing.md),
+          child: Row(
+            children: [
+              Image.asset('assets/images/maya_logo.jpg', width: 28, height: 28),
+              const SizedBox(width: 8),
+              Text('MAYA', style: MayaTextStyles.logoText.copyWith(fontSize: 14, letterSpacing: 3)),
+              const Spacer(),
+              if (isAdmin)
+                IconButton(
+                  onPressed: () => context.push(MayaRoutes.admin),
+                  icon: const Icon(Icons.dashboard_outlined, color: MayaColors.accent, size: 20),
+                  tooltip: 'Admin Dashboard',
+                ),
+              IconButton(
+                onPressed: () => context.push(MayaRoutes.search),
+                icon: const Icon(Icons.search, color: MayaColors.textSecondary, size: 20),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
