@@ -153,34 +153,75 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   }
 
   /// Resolves any supported video URL into a playable form.
-  ///
-  /// Supported formats:
-  ///  • Direct MP4/MKV/M3U8 URLs           → played natively as-is
-  ///  • Google Drive share links            → converted to direct stream URL
-  ///  • Google Drive /preview links         → kept as WebView embed
-  ///  • Relative paths                      → served from MAYA backend
   _ResolvedUrl _resolveVideoUrl(String raw) {
     final url = raw.trim();
+    final lower = url.toLowerCase();
 
     // ── Google Drive ──────────────────────────────────────────────────────
-    // Handles:
-    //   https://drive.google.com/file/d/FILE_ID/view
-    //   https://drive.google.com/file/d/FILE_ID/view?usp=sharing
-    //   https://drive.google.com/open?id=FILE_ID
-    //   https://drive.google.com/uc?id=FILE_ID
-    if (url.contains('drive.google.com')) {
+    if (lower.contains('drive.google.com')) {
       final fileId = _extractGoogleDriveId(url);
       if (fileId != null) {
-        // Direct download stream URL — works with Flutter video_player
         final streamUrl =
             'https://drive.usercontent.google.com/download?id=$fileId&export=download&authuser=0&confirm=t';
         return _ResolvedUrl(url: streamUrl, isWebEmbed: false);
       }
     }
 
+    // ── Video Embed Hosts (HDHub4u style) ─────────────────────────────────
+    // These hosts are DESIGNED for embedding — their pages show ONLY the player
+    final embedHosts = [
+      'streamtape.com',
+      'streamtape.to',
+      'streamtape.net',
+      'doodstream.com',
+      'dood.watch',
+      'dood.to',
+      'dood.so',
+      'dood.la',
+      'dood.pm',
+      'd0000d.com',
+      'streamwish.com',
+      'streamwish.to',
+      'streamwish.net',
+      'filemoon.sx',
+      'filemoon.to',
+      'filemoon.in',
+      'streamvid.net',
+      'vidmoly.to',
+      'vidmoly.me',
+      'vidhide.com',
+      'vidhide.to',
+      'streamhide.com',
+      'vidsrc.to',
+      'vidsrc.me',
+      'vidsrc.xyz',
+      'vidsrc.net',
+      'vidsrc.cc',
+      'vidsrc.vip',
+      'vidcloud.co',
+      'vidcloud9.com',
+      'rapidvideo.com',
+      'upstream.to',
+      'mixdrop.co',
+      'mixdrop.to',
+      'mixdrop.bz',
+      'streamlare.com',
+      'streamlare.net',
+      'fembed.com',
+      'layarkaca21.lol',
+      'embedsito.com',
+    ];
+
+    for (final host in embedHosts) {
+      if (lower.contains(host)) {
+        // Convert to embed URL if not already
+        final embedUrl = _toEmbedUrl(url, host);
+        return _ResolvedUrl(url: embedUrl, isWebEmbed: true);
+      }
+    }
+
     // ── Direct media URL ──────────────────────────────────────────────────
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      final lower = url.toLowerCase();
+    if (lower.startsWith('http://') || lower.startsWith('https://')) {
       final isDirect = lower.endsWith('.mp4') ||
           lower.endsWith('.mkv') ||
           lower.endsWith('.m3u8') ||
@@ -188,38 +229,66 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
           lower.endsWith('.mov') ||
           lower.contains('.mp4?') ||
           lower.contains('.m3u8?') ||
-          lower.contains('googleusercontent.com') || // GCS / Drive download
-          lower.contains('amazonaws.com') || // S3
-          lower.contains('cloudinary.com') || // Cloudinary
-          lower.contains('bunnycdn.com') || // Bunny CDN
-          lower.contains('b-cdn.net'); // Bunny CDN alias
+          lower.contains('googleusercontent.com') ||
+          lower.contains('amazonaws.com') ||
+          lower.contains('cloudinary.com') ||
+          lower.contains('bunnycdn.com') ||
+          lower.contains('b-cdn.net');
       if (isDirect) return _ResolvedUrl(url: url, isWebEmbed: false);
 
-      // Any other HTTP URL → try as WebView (last resort)
+      // Unknown HTTP URL → WebView fallback
       return _ResolvedUrl(url: url, isWebEmbed: true);
     }
 
-    // ── Relative path → served from MAYA backend ─────────────────────────
+    // ── Relative path → MAYA backend stream ──────────────────────────────
     return _ResolvedUrl(
       url: const MovieRepository().streamUrl(widget.movieId),
       isWebEmbed: false,
     );
   }
 
+  /// Converts a video host URL to its embed form.
+  String _toEmbedUrl(String url, String host) {
+    // Streamtape: /v/ID → /e/ID
+    if (host.contains('streamtape')) {
+      return url
+          .replaceFirst('/v/', '/e/')
+          .replaceFirst('/video/', '/e/')
+          .replaceFirst('/stream/', '/e/');
+    }
+    // Doodstream: /d/ID → /e/ID
+    if (host.contains('dood')) {
+      return url.replaceFirst('/d/', '/e/').replaceFirst('/f/', '/e/');
+    }
+    // Streamwish: /v/ID → /e/ID
+    if (host.contains('streamwish')) {
+      return url.replaceFirst('/v/', '/e/').replaceFirst('/f/', '/e/');
+    }
+    // FileMoon: /v/ID → /e/ID
+    if (host.contains('filemoon')) {
+      return url.replaceFirst('/v/', '/e/');
+    }
+    // VidSrc: already clean
+    if (host.contains('vidsrc')) {
+      return url;
+    }
+    // Default: return as-is (most embed hosts use /e/ already)
+    return url;
+  }
+
   /// Extracts the Google Drive file ID from any Drive share URL.
   String? _extractGoogleDriveId(String url) {
-    // Pattern: /file/d/FILE_ID/
     final filePattern = RegExp(r'/file/d/([a-zA-Z0-9_-]{20,})');
     final fileMatch = filePattern.firstMatch(url);
     if (fileMatch != null) return fileMatch.group(1);
 
-    // Pattern: ?id=FILE_ID or &id=FILE_ID
     final idPattern = RegExp(r'[?&]id=([a-zA-Z0-9_-]{20,})');
     final idMatch = idPattern.firstMatch(url);
     if (idMatch != null) return idMatch.group(1);
 
     return null;
   }
+
 
   void _setupWebView(String url) {
     setState(() {
@@ -231,122 +300,79 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     final controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setUserAgent(
-          "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36")
+          'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36')
       ..setBackgroundColor(Colors.black)
       ..setNavigationDelegate(
         NavigationDelegate(
-          onPageStarted: (String url) {
+          onPageStarted: (_) {
             if (mounted) setState(() => _webViewLoading = true);
           },
-          onPageFinished: (String url) {
+          onPageFinished: (_) {
             if (mounted) setState(() => _webViewLoading = false);
+            // Minimal injection: fullscreen video + dismiss ads + autoplay
             _webViewController?.runJavaScript(r'''
 (function() {
-  // Inject style ONLY once
-  if (!document.getElementById('maya-style')) {
-    var s = document.createElement('style');
-    s.id = 'maya-style';
-    s.textContent = `
-      /* Reset page background */
-      body, html {
-        background: #000 !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        overflow: hidden !important;
-      }
+  if (document.getElementById('_maya_injected')) return;
+  var marker = document.createElement('div');
+  marker.id = '_maya_injected';
+  document.body && document.body.appendChild(marker);
 
-      /* Hide ONLY known Diskwala chrome elements by tag */
-      header, nav, footer, aside,
-      [class*="Header"], [class*="header"],
-      [class*="Navbar"], [class*="navbar"],
-      [class*="Footer"], [class*="footer"],
-      [class*="Topbar"], [class*="topbar"],
-      [class*="AppBar"], [class*="appbar"],
-      [class*="Logo"], [class*="logo"],
-      [class*="Banner"], [class*="banner"],
-      [class*="Download"], [class*="download"],
-      [class*="Sidebar"], [class*="sidebar"],
-      [class*="Modal"]:not([class*="Player"]):not([class*="player"]),
-      [class*="Dialog"]:not([class*="Player"]):not([class*="player"]),
-      [class*="Toast"], [class*="Snack"],
-      [class*="Cookie"], [class*="cookie"],
-      [class*="Ad"], [class*="ads"],
-      [data-testid*="header"], [data-testid*="nav"],
-      button[aria-label*="download"],
-      button[aria-label*="share"],
-      a[href*="download"] {
-        display: none !important;
-        visibility: hidden !important;
-        opacity: 0 !important;
-        pointer-events: none !important;
-      }
+  var style = document.createElement('style');
+  style.textContent = `
+    html, body { background: #000 !important; margin: 0 !important; padding: 0 !important; }
+    video {
+      position: fixed !important; top: 0 !important; left: 0 !important;
+      width: 100vw !important; height: 100vh !important;
+      z-index: 2147483647 !important; background: #000 !important;
+      object-fit: contain !important; display: block !important;
+    }
+    iframe[src*="player"], iframe[src*="embed"] {
+      position: fixed !important; top: 0 !important; left: 0 !important;
+      width: 100vw !important; height: 100vh !important;
+      z-index: 2147483646 !important; border: none !important;
+    }
+  `;
+  document.head.appendChild(style);
 
-      /* Make video fullscreen */
-      video {
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        width: 100vw !important;
-        height: 100vh !important;
-        object-fit: contain !important;
-        background: #000 !important;
-        z-index: 2147483647 !important;
-        display: block !important;
-        visibility: visible !important;
-        opacity: 1 !important;
+  function dismissAds() {
+    // Close ad overlays by clicking × / close / skip buttons
+    var closers = document.querySelectorAll(
+      '[class*="close" i], [class*="dismiss" i], [class*="skip" i], [aria-label*="close" i], [id*="close" i]'
+    );
+    closers.forEach(function(el) { try { el.click(); } catch(e) {} });
+    // Remove ad iframes that aren't video players
+    document.querySelectorAll('iframe').forEach(function(f) {
+      var s = (f.src || '').toLowerCase();
+      if (!s.includes('player') && !s.includes('embed') && !s.includes('video')) {
+        f.style.display = 'none';
       }
-
-      /* Bring video container to top */
-      [class*="Player"], [class*="player"],
-      [class*="Video"], [class*="video"] {
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        width: 100vw !important;
-        height: 100vh !important;
-        z-index: 2147483646 !important;
-      }
-    `;
-    document.head.appendChild(s);
+    });
   }
 
   function tryPlay() {
-    // Find video element
     var v = document.querySelector('video');
-    if (v) {
-      v.muted = false;
-      v.volume = 1;
-      v.play().catch(function() { v.muted = true; v.play().catch(function(){}); });
+    if (v && v.readyState >= 1) {
+      v.muted = false; v.volume = 1;
+      v.play().catch(function() { v.muted = true; v.play().catch(function() {}); });
       return true;
     }
-
-    // No video yet — click play buttons to trigger stream load
-    var selectors = [
-      '[class*="play" i]',
-      '[aria-label*="play" i]',
-      '[aria-label*="Play" i]',
-      'button[class*="Play"]',
-      '[class*="PlayButton"]',
-      '[class*="playBtn"]',
-      '[data-testid*="play"]',
-      'svg[class*="play"]',
-    ];
-    for (var i = 0; i < selectors.length; i++) {
-      var el = document.querySelector(selectors[i]);
+    // Click known play button selectors
+    var sel = ['#playbtn', '.play-btn', '.jw-icon-display', '.vjs-big-play-button',
+      '[class*="play-button"]', '[aria-label="Play"]', '[title="Play"]'];
+    for (var i = 0; i < sel.length; i++) {
+      var el = document.querySelector(sel[i]);
       if (el) { try { el.click(); } catch(e) {} }
     }
     return false;
   }
 
-  // Try immediately and keep retrying every 800ms
-  var attempts = 0;
-  var interval = setInterval(function() {
-    attempts++;
-    var success = tryPlay();
-    if (success || attempts > 30) clearInterval(interval);
-  }, 800);
-
+  dismissAds();
   tryPlay();
+  var t = 0;
+  var iv = setInterval(function() {
+    dismissAds();
+    if (tryPlay() || ++t > 20) clearInterval(iv);
+  }, 1000);
 })();
 ''');
           },
