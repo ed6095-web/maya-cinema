@@ -35,7 +35,7 @@ async def get_stats(
     """Admin dashboard statistics."""
     total_movies = (await db.execute(select(func.count()).select_from(Movie))).scalar_one()
     active_movies = (await db.execute(select(func.count()).select_from(Movie).where(Movie.is_active == True))).scalar_one()
-    total_users = (await db.execute(select(func.count()).select_from(User).where(User.role == UserRole.USER))).scalar_one()
+    total_users = (await db.execute(select(func.count()).select_from(User))).scalar_one()
     total_watch_sessions = (await db.execute(select(func.count()).select_from(WatchHistory))).scalar_one()
     total_favorites = (await db.execute(select(func.count()).select_from(Favorite))).scalar_one()
     total_watch_seconds_result = (await db.execute(select(func.sum(WatchHistory.progress_seconds)))).scalar_one()

@@ -209,16 +209,16 @@ class _OverviewTab extends ConsumerWidget {
                       physics: const NeverScrollableScrollPhysics(),
                       crossAxisSpacing: MayaSpacing.md,
                       mainAxisSpacing: MayaSpacing.md,
-                      childAspectRatio: 1.8,
+                      childAspectRatio: cols == 2 ? 1.32 : 1.6,
                       children: [
                         _StatCard(
                           label: 'Total Movies',
                           value: '${stats.totalMovies}',
-                          sub: '${stats.activeMovies} active',
+                          sub: '${stats.activeMovies} active in library',
                           icon: Icons.movie_outlined,
                         ),
                         _StatCard(
-                          label: 'Users',
+                          label: 'Total Users',
                           value: '${stats.totalUsers}',
                           sub: 'registered accounts',
                           icon: Icons.people_outline,
@@ -226,13 +226,13 @@ class _OverviewTab extends ConsumerWidget {
                         _StatCard(
                           label: 'Watch Sessions',
                           value: '${stats.totalWatchSessions}',
-                          sub: '${stats.totalFavorites} favorites',
+                          sub: '${stats.totalFavorites} saved to list',
                           icon: Icons.play_circle_outline,
                         ),
                         _StatCard(
-                          label: 'Hours Watched',
+                          label: 'Playback Time',
                           value: stats.totalWatchFormatted,
-                          sub: 'total playback time',
+                          sub: 'total viewing duration',
                           icon: Icons.schedule_outlined,
                         ),
                       ],
@@ -259,7 +259,7 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(MayaSpacing.md),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       decoration: BoxDecoration(
         color: MayaColors.surfaceSecondary,
         borderRadius: BorderRadius.circular(MayaSpacing.cardRadius),
@@ -272,15 +272,37 @@ class _StatCard extends StatelessWidget {
           Row(
             children: [
               Icon(icon, color: MayaColors.accent, size: 18),
-              const SizedBox(width: 6),
-              Expanded(child: Text(label, style: MayaTextStyles.labelMedium)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  style: MayaTextStyles.labelMedium.copyWith(color: MayaColors.textSecondary),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
+          const SizedBox(height: 6),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(value, style: MayaTextStyles.titleLarge.copyWith(color: MayaColors.accent)),
-              Text(sub, style: MayaTextStyles.labelSmall),
+              Text(
+                value,
+                style: MayaTextStyles.titleLarge.copyWith(
+                  color: MayaColors.accent,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                sub,
+                style: MayaTextStyles.labelSmall.copyWith(
+                  color: MayaColors.textMuted,
+                  fontSize: 11,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
             ],
           ),
         ],

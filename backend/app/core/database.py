@@ -31,9 +31,47 @@ class Base(DeclarativeBase):
 
 
 async def init_db() -> None:
-    """Create all tables on startup if they don't exist."""
+    """Create all tables on startup and ensure persistent admin/user accounts exist."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # Ensure default persistent accounts are always created and preserved
+    from app.core.security import hash_password
+    from app.models.user import User, UserRole
+    from sqlalchemy import select
+
+    async with AsyncSessionLocal() as session:
+        # 1. Admin account
+        result = await session.execute(select(User).where(User.username == "admin"))
+        admin_user = result.scalar_one_or_none()
+        if not admin_user:
+            admin_user = User(
+                username=settings.maya_admin_username,
+                email=settings.maya_admin_email,
+                password_hash=hash_password(settings.maya_admin_password),
+                role=UserRole.ADMIN,
+                is_active=True,
+            )
+            session.add(admin_user)
+
+        # 2. Main Owner account (ed6095)
+        result_ed = await session.execute(select(User).where(User.username == "ed6095"))
+        ed_user = result_ed.scalar_one_or_none()
+        if not ed_user:
+            ed_user = User(
+                username="ed6095",
+                email="eashandarsh77@gmail.com",
+                password_hash=hash_password("changeme123"),
+                role=UserRole.ADMIN,
+                is_active=True,
+            )
+            session.add(ed_user)
+        else:
+            # Ensure ed6095 has ADMIN role
+            ed_user.role = UserRole.ADMIN
+
+        await session.commit()
+
 
 
 async def get_db() -> AsyncSession:

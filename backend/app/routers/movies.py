@@ -101,7 +101,14 @@ async def list_movies(
     result = await db.execute(query)
     items = list(result.scalars().all())
 
-    return MovieListResponse(items=items, total=total, page=page, page_size=page_size)
+    total_pages = (total + page_size - 1) // page_size if page_size else 1
+    return MovieListResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
 
 
 # ---------------------------------------------------------------------------
