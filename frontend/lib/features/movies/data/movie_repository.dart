@@ -74,6 +74,8 @@ class MovieRepository {
     List<int> genreIds = const [],
     String? videoFilePath,
     String? posterFilePath,
+    String? videoUrl,
+    String? posterUrl,
     void Function(int sent, int total)? onSendProgress,
   }) async {
     try {
@@ -86,6 +88,8 @@ class MovieRepository {
         if (rating != null) 'rating': rating.toString(),
         'is_featured': isFeatured.toString(),
         'genre_ids': genreIds.join(','),
+        if (videoUrl != null && videoUrl.isNotEmpty) 'video_url': videoUrl,
+        if (posterUrl != null && posterUrl.isNotEmpty) 'poster_url': posterUrl,
       };
 
       if (videoFilePath != null) {

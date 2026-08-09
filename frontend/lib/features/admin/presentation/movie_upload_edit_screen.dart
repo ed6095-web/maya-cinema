@@ -39,6 +39,8 @@ class _MovieUploadEditScreenState extends ConsumerState<MovieUploadEditScreen> {
   late final _ratingCtrl = TextEditingController(
     text: widget.existingMovie?.rating?.toStringAsFixed(1),
   );
+  late final _videoUrlCtrl = TextEditingController();
+  late final _posterUrlCtrl = TextEditingController();
 
   bool _isFeatured = false;
   bool _isActive = true;
@@ -74,6 +76,8 @@ class _MovieUploadEditScreenState extends ConsumerState<MovieUploadEditScreen> {
     _durationCtrl.dispose();
     _langCtrl.dispose();
     _ratingCtrl.dispose();
+    _videoUrlCtrl.dispose();
+    _posterUrlCtrl.dispose();
     super.dispose();
   }
 
@@ -108,13 +112,14 @@ class _MovieUploadEditScreenState extends ConsumerState<MovieUploadEditScreen> {
         _posterFileName = result.files.first.name;
       });
     }
-  }
-
-  Future<void> _save() async {
+  }  Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
-    if (!_isEditing && _videoFilePath == null) {
-      setState(() => _error = 'Please select a video file.');
+    final videoUrl = _videoUrlCtrl.text.trim();
+    final posterUrl = _posterUrlCtrl.text.trim();
+
+    if (!_isEditing && _videoFilePath == null && videoUrl.isEmpty) {
+      setState(() => _error = 'Please provide a Diskwala / Video Stream URL or select a video file.');
       return;
     }
 
@@ -158,6 +163,8 @@ class _MovieUploadEditScreenState extends ConsumerState<MovieUploadEditScreen> {
           genreIds: _selectedGenreIds,
           videoFilePath: _videoFilePath,
           posterFilePath: _posterFilePath,
+          videoUrl: videoUrl.isNotEmpty ? videoUrl : null,
+          posterUrl: posterUrl.isNotEmpty ? posterUrl : null,
           onSendProgress: (sent, total) {
             if (total > 0 && mounted) {
               setState(() => _uploadProgress = sent / total);
@@ -212,30 +219,74 @@ class _MovieUploadEditScreenState extends ConsumerState<MovieUploadEditScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── Files section (only for new uploads) ──────────────────
+                  // ── Files / Video Source section (only for new uploads) ───
                   if (!_isEditing) ...[
-                    Text('Media Files', style: MayaTextStyles.titleSmall),
+                    Text('Video Source & Media', style: MayaTextStyles.titleSmall),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Paste a Diskwala or cloud video stream link (0 server space used), or select a local video file:',
+                      style: MayaTextStyles.bodySmall.copyWith(color: MayaColors.accentDim),
+                    ),
                     const SizedBox(height: MayaSpacing.md),
+
+                    // Diskwala / Video Stream URL input
+                    TextFormField(
+                      controller: _videoUrlCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Diskwala / Video Stream URL',
+                        hintText: 'https://diskwala.com/... or https://.../movie.mp4',
+                        prefixIcon: const Icon(Icons.cloud_download_outlined, color: MayaColors.accent),
+                        suffixIcon: _videoUrlCtrl.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear, size: 18),
+                                onPressed: () => setState(() => _videoUrlCtrl.clear()),
+                              )
+                            : null,
+                      ),
+                      style: MayaTextStyles.bodyLarge.copyWith(color: MayaColors.textPrimary),
+                      onChanged: (v) => setState(() {}),
+                    ),
+                    const SizedBox(height: MayaSpacing.md),
+
+                    // Or Local File Picker
                     Row(
                       children: [
-                        Expanded(child: _FilePicker(
-                          label: 'Video File *',
-                          icon: Icons.movie_outlined,
-                          fileName: _videoFileName,
-                          hint: 'MP4, MKV, WebM, MOV…',
-                          onPick: _pickVideo,
-                          isRequired: true,
-                        )),
+                        Expanded(
+                          child: _FilePicker(
+                            label: _videoUrlCtrl.text.isNotEmpty
+                                ? 'Local File (Optional)'
+                                : 'Or Select Video File *',
+                            icon: Icons.movie_outlined,
+                            fileName: _videoFileName,
+                            hint: 'MP4, MKV, WebM, MOV…',
+                            onPick: _pickVideo,
+                            isRequired: _videoUrlCtrl.text.isEmpty,
+                          ),
+                        ),
                         const SizedBox(width: MayaSpacing.md),
-                        Expanded(child: _FilePicker(
-                          label: 'Poster Image',
-                          icon: Icons.image_outlined,
-                          fileName: _posterFileName,
-                          hint: 'JPG, PNG, WebP',
-                          onPick: _pickPoster,
-                          isRequired: false,
-                        )),
+                        Expanded(
+                          child: _FilePicker(
+                            label: 'Poster Image',
+                            icon: Icons.image_outlined,
+                            fileName: _posterFileName,
+                            hint: 'JPG, PNG, WebP',
+                            onPick: _pickPoster,
+                            isRequired: false,
+                          ),
+                        ),
                       ],
+                    ),
+                    const SizedBox(height: MayaSpacing.md),
+
+                    // Poster image URL input (optional)
+                    TextFormField(
+                      controller: _posterUrlCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Or Poster Image URL (Optional)',
+                        hintText: 'https://.../poster.jpg',
+                        prefixIcon: Icon(Icons.link, color: MayaColors.accent),
+                      ),
+                      style: MayaTextStyles.bodyLarge.copyWith(color: MayaColors.textPrimary),
                     ),
                     const SizedBox(height: MayaSpacing.xl),
                     const Divider(color: MayaColors.border),

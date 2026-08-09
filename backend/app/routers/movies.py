@@ -17,7 +17,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -59,60 +59,53 @@ async def _get_movie_or_404(movie_id: int, db: AsyncSession) -> Movie:
 
 @router.get("", response_model=MovieListResponse)
 async def list_movies(
+    search: str | None = None,
+    genre_id: int | None = None,
+    is_featured: bool | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    search: str | None = Query(None),
-    genre_id: int | None = Query(None),
-    year: int | None = Query(None),
-    featured: bool | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    """Paginated, filterable movie list. Requires auth."""
-    query = (
-        select(Movie)
-        .options(selectinload(Movie.genres))
-        .where(Movie.is_active == True)
-        .order_by(Movie.created_at.desc())
-    )
+    """
+    List movies with optional search, genre filter, and pagination.
+    Only returns active movies for regular users.
+    """
+    query = select(Movie).options(selectinload(Movie.genres)).where(Movie.is_active.is_(True))
 
     if search:
+        term = f"%{search.strip()}%"
         query = query.where(
             or_(
-                Movie.title.ilike(f"%{search}%"),
-                Movie.language.ilike(f"%{search}%"),
+                Movie.title.ilike(term),
+                Movie.description.ilike(term),
+                Movie.language.ilike(term),
             )
         )
-    if year:
-        query = query.where(Movie.release_year == year)
-    if featured is not None:
-        query = query.where(Movie.is_featured == featured)
-    if genre_id:
+
+    if genre_id is not None:
         query = query.join(Movie.genres).where(Genre.id == genre_id)
+
+    if is_featured is not None:
+        query = query.where(Movie.is_featured == is_featured)
 
     # Count total
     count_query = select(func.count()).select_from(query.subquery())
     total_result = await db.execute(count_query)
     total = total_result.scalar_one()
 
-    # Apply pagination
-    offset = (page - 1) * page_size
-    result = await db.execute(query.offset(offset).limit(page_size))
-    movies = result.scalars().unique().all()
+    # Paginate and order
+    query = query.order_by(Movie.created_at.desc())
+    query = query.offset((page - 1) * page_size).limit(page_size)
 
-    total_pages = (total + page_size - 1) // page_size
+    result = await db.execute(query)
+    items = list(result.scalars().all())
 
-    return MovieListResponse(
-        items=movies,
-        total=total,
-        page=page,
-        page_size=page_size,
-        total_pages=total_pages,
-    )
+    return MovieListResponse(items=items, total=total, page=page, page_size=page_size)
 
 
 # ---------------------------------------------------------------------------
-# Movie detail
+# Get single movie
 # ---------------------------------------------------------------------------
 
 @router.get("/{movie_id}", response_model=MovieResponse)
@@ -121,11 +114,12 @@ async def get_movie(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
+    """Get detailed movie metadata by ID."""
     return await _get_movie_or_404(movie_id, db)
 
 
 # ---------------------------------------------------------------------------
-# Create movie (admin, multipart)
+# Upload / Create movie (admin)
 # ---------------------------------------------------------------------------
 
 @router.post("", response_model=MovieResponse, status_code=status.HTTP_201_CREATED)
@@ -138,12 +132,14 @@ async def create_movie(
     rating: float | None = Form(None),
     is_featured: bool = Form(False),
     genre_ids: str = Form(""),  # comma-separated IDs
+    video_url: str | None = Form(None),  # Direct Diskwala / Cloud stream link
+    poster_url: str | None = Form(None),  # Direct Poster image URL
     video: UploadFile | None = File(None),
     poster: UploadFile | None = File(None),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    """Upload a new movie with optional video and poster. Admin only."""
+    """Upload a new movie with video URL/file and poster. Admin only."""
     movie = Movie(
         title=title,
         description=description,
@@ -154,7 +150,15 @@ async def create_movie(
         is_featured=is_featured,
     )
 
-    # Save video file
+    # Cloud Video URL (e.g. Diskwala direct stream link)
+    if video_url and video_url.strip():
+        movie.video_path = video_url.strip()
+
+    # Cloud Poster URL
+    if poster_url and poster_url.strip():
+        movie.poster_path = poster_url.strip()
+
+    # Save video file from local disk if uploaded
     if video and video.filename:
         video_bytes = await video.read()
         validate_video_file(video.filename, video.content_type, len(video_bytes))
@@ -166,7 +170,7 @@ async def create_movie(
         movie.video_path = str(video_path)
         movie.file_size = len(video_bytes)
 
-    # Save poster file
+    # Save poster file if uploaded
     if poster and poster.filename:
         poster_bytes = await poster.read()
         validate_image_file(poster.filename, poster.content_type, len(poster_bytes))
@@ -234,9 +238,9 @@ async def delete_movie(
     movie = await _get_movie_or_404(movie_id, db)
 
     # Clean up files from disk
-    if movie.video_path:
+    if movie.video_path and not movie.video_path.startswith("http"):
         safe_delete_file(movie.video_path)
-    if movie.poster_path:
+    if movie.poster_path and not movie.poster_path.startswith("http"):
         safe_delete_file(movie.poster_path)
 
     await db.delete(movie)
@@ -254,14 +258,20 @@ async def get_poster(
     """Serve the movie poster image."""
     movie = await _get_movie_or_404(movie_id, db)
 
-    if not movie.poster_path or not Path(movie.poster_path).exists():
+    if not movie.poster_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Poster not found")
+
+    if movie.poster_path.startswith("http://") or movie.poster_path.startswith("https://"):
+        return RedirectResponse(url=movie.poster_path, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
+    if not Path(movie.poster_path).exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Poster not found")
 
     return FileResponse(movie.poster_path)
 
 
 # ---------------------------------------------------------------------------
-# HTTP Range streaming
+# HTTP Range streaming / Cloud URL Redirection
 # ---------------------------------------------------------------------------
 
 CHUNK_SIZE = 1024 * 1024  # 1 MB chunks
@@ -274,13 +284,18 @@ async def stream_movie(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Stream a movie using HTTP Range requests (206 Partial Content).
-    Supports seeking, partial downloads, and proper video player integration.
-    Does NOT load the entire file into memory.
+    Stream a movie using HTTP Range requests or redirect directly to Cloud/Diskwala URL.
     """
     movie = await _get_movie_or_404(movie_id, db)
 
-    if not movie.video_path or not Path(movie.video_path).exists():
+    if not movie.video_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video source not found")
+
+    # Cloud Video Stream (Diskwala / Direct URL)
+    if movie.video_path.startswith("http://") or movie.video_path.startswith("https://"):
+        return RedirectResponse(url=movie.video_path, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
+    if not Path(movie.video_path).exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video file not found")
 
     video_path = Path(movie.video_path)
