@@ -57,9 +57,16 @@ class ApiConstants {
   static String adminToggleUser(int userId) => '/api/admin/users/$userId/toggle-active';
 
   // -------------------------------------------------------------------------
-  // Stream Resolver
+  // Link Player & Resolver
   // -------------------------------------------------------------------------
+  static const String resolveLink = '/api/link/resolve';
   static const String resolveStream = '/api/resolve/stream';
+
+  // -------------------------------------------------------------------------
+  // External Media
+  // -------------------------------------------------------------------------
+  static const String externalMedia = '/api/external';
+  static String externalMediaById(int id) => '/api/external/$id';
 
   // -------------------------------------------------------------------------
   // Health

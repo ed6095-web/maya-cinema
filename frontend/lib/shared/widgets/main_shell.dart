@@ -1,8 +1,7 @@
 // MAYA — Main Navigation Shell
-// Wraps all primary tabs (Home, Search, Favorites, History, Profile) with persistent
+// Wraps all primary tabs (Home, Search, Link Player, My List, Profile) with persistent
 // bottom navigation on mobile and sidebar on desktop.
-// Includes full tab-by-tab Android Back navigation history so pressing Back
-// goes back through visited tabs in reverse order before closing the app.
+// Includes full tab-by-tab Android Back navigation history.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -22,18 +21,16 @@ class MainShell extends ConsumerStatefulWidget {
 }
 
 class _MainShellState extends ConsumerState<MainShell> {
-  // Keeps track of the tab history: e.g. [0 (Home), 1 (Search), 2 (Favorites)]
   final List<int> _tabHistory = [0];
 
   void _onTabSelected(int index) {
     if (widget.navigationShell.currentIndex == index) {
-      // Re-selecting current tab returns to initial location of that branch
       widget.navigationShell.goBranch(index, initialLocation: true);
       return;
     }
 
     setState(() {
-      _tabHistory.remove(index); // Remove if previously in history to avoid loops
+      _tabHistory.remove(index);
       _tabHistory.add(index);
     });
 
@@ -48,14 +45,12 @@ class _MainShellState extends ConsumerState<MainShell> {
       final previousTab = _tabHistory.last;
       widget.navigationShell.goBranch(previousTab, initialLocation: false);
     } else if (widget.navigationShell.currentIndex != 0) {
-      // Return to Home tab if not already on it
       setState(() {
         _tabHistory.clear();
         _tabHistory.add(0);
       });
       widget.navigationShell.goBranch(0, initialLocation: false);
     } else {
-      // On Home tab with no prior tab history — exit app cleanly
       SystemNavigator.pop();
     }
   }
@@ -94,7 +89,7 @@ class _MainShellState extends ConsumerState<MainShell> {
                   border: Border(top: BorderSide(color: MayaColors.border)),
                 ),
                 child: NavigationBar(
-                  selectedIndex: currentIndex.clamp(0, 3),
+                  selectedIndex: currentIndex.clamp(0, 4),
                   onDestinationSelected: (i) => _onTabSelected(i),
                   destinations: const [
                     NavigationDestination(
@@ -105,6 +100,11 @@ class _MainShellState extends ConsumerState<MainShell> {
                     NavigationDestination(
                       icon: Icon(Icons.search),
                       label: 'Search',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.link_outlined),
+                      selectedIcon: Icon(Icons.link, color: Color(0xFFD4AF37)),
+                      label: 'Link Player',
                     ),
                     NavigationDestination(
                       icon: Icon(Icons.bookmark_border),
@@ -154,9 +154,13 @@ class _MayaSidebar extends ConsumerWidget {
               children: [
                 Image.asset('assets/images/maya_logo.jpg', width: 30, height: 30),
                 const SizedBox(width: 10),
-                Text('MAYA',
-                    style: MayaTextStyles.logoText
-                        .copyWith(fontSize: 16, letterSpacing: 4)),
+                Text(
+                  'MAYA',
+                  style: MayaTextStyles.logoText.copyWith(
+                    fontSize: 16,
+                    letterSpacing: 4,
+                  ),
+                ),
               ],
             ),
           ),
@@ -176,16 +180,22 @@ class _MayaSidebar extends ConsumerWidget {
             onTap: () => onSelectTab(1),
           ),
           _SidebarItem(
-            icon: Icons.bookmark_border,
-            label: 'My List',
+            icon: Icons.link,
+            label: 'Link Player',
             isActive: currentIndex == 2,
             onTap: () => onSelectTab(2),
           ),
           _SidebarItem(
-            icon: Icons.person_outline,
-            label: 'Profile',
+            icon: Icons.bookmark_border,
+            label: 'My List',
             isActive: currentIndex == 3,
             onTap: () => onSelectTab(3),
+          ),
+          _SidebarItem(
+            icon: Icons.person_outline,
+            label: 'Profile',
+            isActive: currentIndex == 4,
+            onTap: () => onSelectTab(4),
           ),
 
           if (isAdmin) ...[
@@ -246,9 +256,11 @@ class _SidebarItem extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(icon,
-                size: 18,
-                color: isActive ? MayaColors.accent : MayaColors.textMuted),
+            Icon(
+              icon,
+              size: 18,
+              color: isActive ? MayaColors.accent : MayaColors.textMuted,
+            ),
             const SizedBox(width: 12),
             Text(
               label,

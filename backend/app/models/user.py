@@ -35,6 +35,7 @@ class User(Base):
     # Relationships
     favorites: Mapped[list["Favorite"]] = relationship("Favorite", back_populates="user", cascade="all, delete-orphan")
     watch_history: Mapped[list["WatchHistory"]] = relationship("WatchHistory", back_populates="user", cascade="all, delete-orphan")
+    external_media: Mapped[list["ExternalMedia"]] = relationship("ExternalMedia", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
         return f"<User id={self.id} username={self.username!r} role={self.role}>"

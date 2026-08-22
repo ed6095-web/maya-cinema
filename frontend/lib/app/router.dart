@@ -12,6 +12,8 @@ import 'package:maya_app/features/home/presentation/home_screen.dart';
 import 'package:maya_app/features/movies/presentation/movie_detail_screen.dart';
 import 'package:maya_app/features/player/presentation/player_screen.dart';
 import 'package:maya_app/features/search/presentation/search_screen.dart';
+import 'package:maya_app/features/link_player/presentation/link_player_screen.dart';
+import 'package:maya_app/features/link_player/presentation/external_media_screen.dart';
 import 'package:maya_app/features/favorites/presentation/favorites_screen.dart';
 import 'package:maya_app/features/history/presentation/history_screen.dart';
 import 'package:maya_app/features/profile/presentation/profile_screen.dart';
@@ -27,11 +29,14 @@ abstract class MayaRoutes {
   static const String register = '/register';
   static const String home = '/';
   static const String search = '/search';
+  static const String linkPlayer = '/link-player';
   static const String favorites = '/favorites';
   static const String history = '/history';
+  static const String externalMedia = '/external';
   static const String profile = '/profile';
   static const String movieDetail = '/movies/:id';
-  static const String player = '/movies/:id/play';
+  static const String player = '/play';
+  static const String moviePlayer = '/movies/:id/play';
   static const String admin = '/admin';
 
   static String movieDetailPath(int id) => '/movies/$id';
@@ -41,6 +46,7 @@ abstract class MayaRoutes {
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 final _shellNavigatorHomeKey = GlobalKey<NavigatorState>(debugLabel: 'shellHome');
 final _shellNavigatorSearchKey = GlobalKey<NavigatorState>(debugLabel: 'shellSearch');
+final _shellNavigatorLinkPlayerKey = GlobalKey<NavigatorState>(debugLabel: 'shellLinkPlayer');
 final _shellNavigatorFavoritesKey = GlobalKey<NavigatorState>(debugLabel: 'shellFavorites');
 final _shellNavigatorProfileKey = GlobalKey<NavigatorState>(debugLabel: 'shellProfile');
 
@@ -69,7 +75,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const RegisterScreen(),
       ),
 
-      // ── Main Shell with Persistent Tabs & Tab-by-Tab Back History ───────
+      // ── Main Shell with 5 Persistent Tabs ────────────────────────────────
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {
           return MainShell(navigationShell: navigationShell);
@@ -97,7 +103,18 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
-          // Tab 2: Favorites / My List
+          // Tab 2: Link Player (Dedicated Feature)
+          StatefulShellBranch(
+            navigatorKey: _shellNavigatorLinkPlayerKey,
+            routes: [
+              GoRoute(
+                path: MayaRoutes.linkPlayer,
+                name: 'link-player-tab',
+                builder: (context, state) => const LinkPlayerScreen(),
+              ),
+            ],
+          ),
+          // Tab 3: Favorites / My List
           StatefulShellBranch(
             navigatorKey: _shellNavigatorFavoritesKey,
             routes: [
@@ -108,7 +125,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
-          // Tab 3: Profile
+          // Tab 4: Profile
           StatefulShellBranch(
             navigatorKey: _shellNavigatorProfileKey,
             routes: [
@@ -131,6 +148,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
+        path: MayaRoutes.externalMedia,
+        name: 'external-media',
+        builder: (context, state) => const ExternalMediaScreen(),
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootNavigatorKey,
         path: MayaRoutes.movieDetail,
         name: 'movie-detail',
         builder: (context, state) {
@@ -140,11 +163,24 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
-        path: MayaRoutes.player,
-        name: 'player',
+        path: MayaRoutes.moviePlayer,
+        name: 'movie-player',
         builder: (context, state) {
-          final id = int.parse(state.pathParameters['id']!);
+          final id = int.tryParse(state.pathParameters['id'] ?? '');
           return PlayerScreen(movieId: id);
+        },
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootNavigatorKey,
+        path: MayaRoutes.player,
+        name: 'direct-player',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>?;
+          return PlayerScreen(
+            directUrl: extra?['directUrl'] as String?,
+            title: extra?['title'] as String?,
+            streamType: extra?['streamType'] as String?,
+          );
         },
       ),
       GoRoute(

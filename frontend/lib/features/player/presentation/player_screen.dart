@@ -35,8 +35,18 @@ enum VideoFitMode {
 // ============================================================================
 
 class PlayerScreen extends ConsumerStatefulWidget {
-  final int movieId;
-  const PlayerScreen({super.key, required this.movieId});
+  final int? movieId;
+  final String? directUrl;
+  final String? title;
+  final String? streamType;
+
+  const PlayerScreen({
+    super.key,
+    this.movieId,
+    this.directUrl,
+    this.title,
+    this.streamType,
+  });
 
   @override
   ConsumerState<PlayerScreen> createState() => _PlayerScreenState();
@@ -92,8 +102,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     });
 
     try {
-      _movie = await const MovieRepository().getMovieById(widget.movieId);
-      final rawVideoPath = _movie?.videoPath?.trim() ?? '';
+      String rawVideoPath = '';
+      if (widget.directUrl != null && widget.directUrl!.isNotEmpty) {
+        rawVideoPath = widget.directUrl!;
+      } else if (widget.movieId != null) {
+        _movie = await const MovieRepository().getMovieById(widget.movieId!);
+        rawVideoPath = _movie?.videoPath?.trim() ?? '';
+      }
+
+      if (widget.streamType == 'embed') {
+        _setupWebView(rawVideoPath);
+        return;
+      }
 
       // ── STEP 1: Resolve / normalise video URL ─────────────────────────────
       final resolvedUrl = _resolveVideoUrl(rawVideoPath);
@@ -107,18 +127,25 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       // ── STEP 3: Native Cinema Player (Direct MP4 / HLS / Drive) ──────────
       final targetUrl = resolvedUrl.url.isNotEmpty
           ? resolvedUrl.url
-          : const MovieRepository().streamUrl(widget.movieId);
+          : (widget.movieId != null ? const MovieRepository().streamUrl(widget.movieId!) : '');
 
-      final existingHistory = ref.read(historyProvider).value?.firstWhere(
-            (h) => h.movieId == widget.movieId,
-            orElse: () => WatchHistoryModel(
-              id: 0,
-              movieId: widget.movieId,
-              progressSeconds: 0,
-              lastWatchedAt: DateTime.now(),
-              completed: false,
-            ),
-          );
+      if (targetUrl.isEmpty) {
+        throw Exception('No playable video stream URL provided.');
+      }
+
+      WatchHistoryModel? existingHistory;
+      if (widget.movieId != null) {
+        existingHistory = ref.read(historyProvider).value?.firstWhere(
+              (h) => h.movieId == widget.movieId!,
+              orElse: () => WatchHistoryModel(
+                id: 0,
+                movieId: widget.movieId!,
+                progressSeconds: 0,
+                lastWatchedAt: DateTime.now(),
+                completed: false,
+              ),
+            );
+      }
 
       _controller?.dispose();
       _controller = VideoPlayerController.networkUrl(
@@ -135,8 +162,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
       _controller!.play();
 
-      _progressTimer?.cancel();
-      _progressTimer = Timer.periodic(const Duration(seconds: 10), (_) => _saveProgress());
+      if (widget.movieId != null) {
+        _progressTimer?.cancel();
+        _progressTimer = Timer.periodic(const Duration(seconds: 10), (_) => _saveProgress());
+      }
 
       if (mounted) {
         setState(() => _loading = false);
@@ -146,11 +175,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       if (mounted) {
         setState(() {
           _loading = false;
-          _error = 'Could not load video.\n\nTip: Use a Google Drive or direct MP4 link for best results.\n\nError: $e';
+          _error = 'Could not load video.\n\n$e';
         });
       }
     }
   }
+
 
   /// Resolves any supported video URL into a playable form.
   _ResolvedUrl _resolveVideoUrl(String raw) {
@@ -247,7 +277,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
     // ── Relative path → MAYA backend stream ──────────────────────────────
     return _ResolvedUrl(
-      url: const MovieRepository().streamUrl(widget.movieId),
+      url: widget.movieId != null
+          ? const MovieRepository().streamUrl(widget.movieId!)
+          : url,
       isWebEmbed: false,
     );
   }
@@ -402,6 +434,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   }
 
   Future<void> _saveProgress() async {
+    if (widget.movieId == null) return;
     final c = _controller;
     if (c == null || !c.value.isInitialized) return;
     final dur = c.value.duration.inSeconds;
@@ -409,7 +442,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     if (pos > 5) {
       try {
         await const MovieRepository().saveProgress(
-          widget.movieId,
+          widget.movieId!,
           pos,
           dur > 0 ? dur : null,
         );
@@ -1033,7 +1066,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              _movie?.title ?? 'MAYA Cinema',
+                              _movie?.title ?? widget.title ?? 'MAYA Cinema',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 16,
